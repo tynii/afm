@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>아보카도 계란 토스트 레시피</title>
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<!-- ⚠️ 모든 CDN은 버전을 명시적으로 고정. Babel은 반드시 7.x -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+<style>
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(-3deg); }
+    50% { transform: translateY(-12px) rotate(3deg); }
+  }
+  .float-slow { animation: float 6s ease-in-out infinite; }
+  @keyframes progressGrow {
+    from { width: 0%; }
+  }
+  .progress-bar-fill { animation: progressGrow 0.4s ease-out; }
+</style>
+</head>
+<body class="bg-[#FBF7F0]">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect } = React;
+
+// ========================================
+// 🎨 Design System Components
+// ========================================
+
+function Button({ children, variant = 'primary', size = 'md', disabled = false, onClick, className = '', ...props }) {
+  const base = 'inline-flex items-center justify-center font-semibold rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed';
+  const variants = {
+    primary: 'bg-[#5B7B4E] text-white hover:bg-[#4A6640] focus:ring-[#5B7B4E] shadow-sm hover:shadow-md',
+    secondary: 'bg-white text-[#5B7B4E] border border-[#C9D9BE] hover:bg-[#F0F5EA] focus:ring-[#5B7B4E]',
+    danger: 'bg-rose-500 text-white hover:bg-rose-600 focus:ring-rose-500',
+    ghost: 'bg-transparent text-[#5B7B4E] hover:bg-[#EEF3E7] focus:ring-[#5B7B4E]',
+  };
+  const sizes = {
+    sm: 'text-xs px-3 py-1.5 gap-1',
+    md: 'text-sm px-4 py-2.5 gap-1.5',
+    lg: 'text-base px-6 py-3 gap-2',
+  };
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Card({ children, className = '' }) {
+  return (
+    <div className={`bg-white rounded-3xl shadow-[0_4px_24px_rgba(91,123,78,0.08)] border border-[#EDE7DA] ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Badge({ children, tone = 'green' }) {
+  const tones = {
+    green: 'bg-[#EAF2E2] text-[#4A6640]',
+    orange: 'bg-[#FBE9D9] text-[#B5651D]',
+    yellow: 'bg-[#FDF3D6] text-[#8A6D1F]',
+    gray: 'bg-gray-100 text-gray-600',
+  };
+  return (
+    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function Checkbox({ checked, onChange, label, className = '' }) {
+  return (
+    <label className={`flex items-center gap-3 cursor-pointer select-none group ${className}`}>
+      <span
+        role="checkbox"
+        aria-checked={checked}
+        tabIndex={0}
+        onClick={onChange}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(); } }}
+        className={`flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+          checked ? 'bg-[#5B7B4E] border-[#5B7B4E]' : 'bg-white border-gray-300 group-hover:border-[#5B7B4E]'
+        }`}
+      >
+        {checked && (
+          <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6L4.5 8.5L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+      <span className={`text-sm transition-colors ${checked ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+        {label}
+      </span>
+    </label>
+  );
+}
+
+function Tabs({ tabs, active, onChange }) {
+  return (
+    <div role="tablist" className="flex gap-2 bg-[#F0EEE4] p-1.5 rounded-full w-full sm:w-fit overflow-x-auto">
+      {tabs.map((tab) => (
+        <button
+          key={tab.key}
+          role="tab"
+          aria-selected={active === tab.key}
+          onClick={() => onChange(tab.key)}
+          className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${
+            active === tab.key ? 'bg-white text-[#4A6640] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {tab.icon} {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ========================================
+// 🧩 Common/Layout Components
+// ========================================
+
+function Header() {
+  const navItems = [
+    { href: '#ingredients', label: '재료' },
+    { href: '#steps', label: '레시피' },
+    { href: '#tips', label: '팁' },
+  ];
+  return (
+    <header className="sticky top-0 z-30 backdrop-blur-md bg-[#FBF7F0]/85 border-b border-[#EDE7DA]">
+      <div className="max-w-4xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <a href="#top" className="flex items-center gap-2 font-bold text-[#4A6640] text-lg">
+          <span className="text-2xl">🥑</span> 아보카도 계란 토스트
+        </a>
+        <nav className="hidden sm:flex items-center gap-6">
+          {navItems.map((item) => (
+            <a key={item.href} href={item.href} className="text-sm font-medium text-gray-600 hover:text-[#4A6640] transition-colors">
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-[#EDE7DA] mt-16">
+      <div className="max-w-4xl mx-auto px-5 sm:px-8 py-8 text-center text-sm text-gray-400">
+        🥑🍳🍞 오늘 아침엔 아보카도 계란 토스트 어때요?
+      </div>
+    </footer>
+  );
+}
+
+// ========================================
+// 📄 Page Components
+// ========================================
+
+function Hero() {
+  return (
+    <section id="top" className="max-w-4xl mx-auto px-5 sm:px-8 pt-10 sm:pt-16 pb-8">
+      <div className="flex flex-col sm:flex-row items-center gap-8">
+        <div className="flex-1 text-center sm:text-left">
+          <Badge tone="green">15분 완성 · 건강한 브런치</Badge>
+          <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-gray-800 leading-tight">
+            아보카도 계란 토스트
+          </h1>
+          <p className="mt-3 text-gray-500 leading-relaxed">
+            부드러운 아보카도와 반숙 계란이 어우러진 든든하고 건강한 브런치 토스트예요.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center sm:justify-start gap-2">
+            <Badge tone="orange">⏱ 총 15분</Badge>
+            <Badge tone="yellow">🔥 난이도 하</Badge>
+            <Badge tone="gray">🍽 1인분 기준</Badge>
+          </div>
+        </div>
+        <div className="w-56 h-56 sm:w-64 sm:h-64 flex-shrink-0 rounded-3xl overflow-hidden shadow-lg">
+          <img
+            src="images/아보카도계란토스트-썸네일.png"
+            alt="완성된 아보카도 계란 토스트"
+            className="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const EGG_STYLES = {
+  fried: {
+    key: 'fried',
+    label: '반숙 프라이',
+    icon: '🍳',
+    step: '팬에 올리브유를 살짝 두르고 계란을 깨 넣어 약불에서 노른자가 반숙이 될 때까지 부칩니다.',
+  },
+  poached: {
+    key: 'poached',
+    label: '수란',
+    icon: '💧',
+    step: '끓는 물에 식초를 살짝 넣고 소용돌이를 만든 뒤 계란을 살살 깨 넣어 2~3분간 익힙니다.',
+  },
+};
+
+function IngredientsCard({ servings, setServings }) {
+  const baseIngredients = [
+    { name: '식빵', amount: 2, unit: '장' },
+    { name: '아보카도', amount: 0.5, unit: '개' },
+    { name: '계란', amount: 1, unit: '개' },
+    { name: '레몬즙', amount: 1, unit: '작은술' },
+    { name: '소금', amount: 1, unit: '꼬집' },
+    { name: '후추', amount: 1, unit: '꼬집' },
+    { name: '올리브유', amount: 1, unit: '작은술' },
+    { name: '페퍼론치노(선택)', amount: 1, unit: '꼬집' },
+  ];
+
+  const scaledIngredients = useMemo(
+    () => baseIngredients.map((ing) => {
+      const scaled = ing.amount * servings;
+      const formatted = Number.isInteger(scaled) ? scaled : scaled.toFixed(1);
+      return { ...ing, display: `${formatted}${ing.unit}` };
+    }),
+    [servings]
+  );
+
+  const [checked, setChecked] = useState({});
+  const toggle = (name) => setChecked((prev) => ({ ...prev, [name]: !prev[name] }));
+
+  return (
+    <Card className="p-6 sm:p-8">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h2 className="text-xl font-bold text-gray-800">재료</h2>
+        <div className="flex items-center gap-3 bg-[#F0EEE4] rounded-full px-2 py-1.5">
+          <button
+            onClick={() => setServings((s) => Math.max(1, s - 1))}
+            className="w-8 h-8 rounded-full bg-white shadow-sm text-[#4A6640] font-bold hover:bg-[#EAF2E2] transition-colors"
+            aria-label="인분 줄이기"
+          >
+            −
+          </button>
+          <span className="text-sm font-semibold text-gray-700 w-16 text-center">{servings}인분</span>
+          <button
+            onClick={() => setServings((s) => Math.min(6, s + 1))}
+            className="w-8 h-8 rounded-full bg-white shadow-sm text-[#4A6640] font-bold hover:bg-[#EAF2E2] transition-colors"
+            aria-label="인분 늘리기"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-3">
+        {scaledIngredients.map((ing) => (
+          <Checkbox
+            key={ing.name}
+            checked={!!checked[ing.name]}
+            onChange={() => toggle(ing.name)}
+            label={`${ing.name} — ${ing.display}`}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function StepsCard() {
+  const [eggStyle, setEggStyle] = useState('fried');
+  const style = EGG_STYLES[eggStyle];
+
+  const steps = useMemo(() => [
+    { title: '식빵 굽기', time: '3분', desc: '토스터나 마른 팬에 식빵을 노릇하게 구워둡니다.' },
+    { title: '아보카도 으깨기', time: '3분', desc: '아보카도를 반으로 갈라 씨를 제거하고 볼에 담아 포크로 으깬 뒤 레몬즙, 소금, 후추로 간을 합니다.' },
+    { title: `계란 반숙 만들기 (${style.label})`, time: '5분', desc: style.step },
+    { title: '토스트에 올리기', time: '2분', desc: '구운 식빵 위에 으깬 아보카도를 골고루 펴 바릅니다.' },
+    { title: '마무리', time: '2분', desc: '아보카도 위에 반숙 계란을 올리고 소금, 후추, 페퍼론치노를 뿌려 완성합니다.' },
+  ], [eggStyle]);
+
+  const [done, setDone] = useState(() => steps.map(() => false));
+
+  useEffect(() => {
+    setDone(steps.map(() => false));
+  }, [eggStyle]);
+
+  const toggleStep = (idx) => {
+    setDone((prev) => {
+      const next = [...prev];
+      next[idx] = !next[idx];
+      return next;
+    });
+  };
+
+  const completedCount = done.filter(Boolean).length;
+  const progress = Math.round((completedCount / steps.length) * 100);
+
+  return (
+    <Card className="p-6 sm:p-8">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h2 className="text-xl font-bold text-gray-800">만드는 법</h2>
+        <span className="text-sm font-semibold text-[#4A6640]">{completedCount}/{steps.length} 완료</span>
+      </div>
+
+      <div className="mt-4 h-2 bg-[#F0EEE4] rounded-full overflow-hidden">
+        <div
+          className="progress-bar-fill h-full bg-[#5B7B4E] rounded-full transition-all duration-500"
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+
+      <p className="mt-6 text-sm font-semibold text-gray-500">계란 조리법 선택</p>
+      <div className="mt-2">
+        <Tabs
+          tabs={Object.values(EGG_STYLES).map((s) => ({ key: s.key, label: s.label, icon: s.icon }))}
+          active={eggStyle}
+          onChange={setEggStyle}
+        />
+      </div>
+
+      <ol className="mt-6 space-y-3">
+        {steps.map((step, idx) => (
+          <li key={idx}>
+            <button
+              onClick={() => toggleStep(idx)}
+              className={`w-full text-left flex gap-4 p-4 rounded-2xl border transition-colors ${
+                done[idx] ? 'bg-[#F5F9F1] border-[#DCE8D0]' : 'bg-white border-[#EDE7DA] hover:border-[#C9D9BE]'
+              }`}
+            >
+              <span
+                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                  done[idx] ? 'bg-[#5B7B4E] text-white' : 'bg-[#F0EEE4] text-gray-500'
+                }`}
+              >
+                {done[idx] ? '✓' : idx + 1}
+              </span>
+              <span className="flex-1">
+                <span className="flex items-center gap-2 flex-wrap">
+                  <span className={`font-semibold ${done[idx] ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                    {step.title}
+                  </span>
+                  <Badge tone="gray">{step.time}</Badge>
+                </span>
+                <span className={`block mt-1 text-sm ${done[idx] ? 'text-gray-300' : 'text-gray-500'}`}>
+                  {step.desc}
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+}
+
+function TipsCard() {
+  const tips = [
+    '아보카도가 덜 익었다면 전자레인지에 10초 정도 살짝 데우면 더 부드러워져요.',
+    '훈제연어나 베이컨을 곁들이면 더 근사한 브런치가 됩니다.',
+    '레몬즙은 아보카도의 갈변도 막아줘요.',
+  ];
+  return (
+    <Card className="p-6 sm:p-8">
+      <h2 className="text-xl font-bold text-gray-800">팁</h2>
+      <ul className="mt-4 space-y-3">
+        {tips.map((tip, idx) => (
+          <li key={idx} className="flex gap-3 text-sm text-gray-600 leading-relaxed">
+            <span className="flex-shrink-0 text-[#5B7B4E]">💡</span>
+            <span>{tip}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function RecipePage() {
+  const [servings, setServings] = useState(1);
+  return (
+    <>
+      <Hero />
+      <main className="max-w-4xl mx-auto px-5 sm:px-8 pb-12 space-y-6">
+        <div id="ingredients">
+          <IngredientsCard servings={servings} setServings={setServings} />
+        </div>
+        <div id="steps">
+          <StepsCard />
+        </div>
+        <div id="tips">
+          <TipsCard />
+        </div>
+      </main>
+    </>
+  );
+}
+
+// ========================================
+// 🚀 App Component
+// ========================================
+
+function App() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <div className="flex-1">
+        <RecipePage />
+      </div>
+      <Footer />
+    </div>
+  );
+}
+
+// ========================================
+// Rendering
+// ========================================
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

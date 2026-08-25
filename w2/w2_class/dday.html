@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>디데이 계산기</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useCallback, useEffect } = React;
+
+// ========================================
+// 🎨 Design System Components
+// ========================================
+function Card({ children, className = "" }) {
+  return (
+    <div className={`bg-white rounded-2xl shadow-md p-6 sm:p-8 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Input({ label, type = "text", value, onChange, placeholder, error, min, max, className = "" }) {
+  return (
+    <div className={className}>
+      {label && (
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          {label}
+        </label>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        min={min}
+        max={max}
+        aria-invalid={!!error}
+        className={`w-full rounded-lg border px-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none transition
+          focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400
+          ${error ? "border-red-400" : "border-slate-300"}`}
+      />
+      {error && <p className="mt-1.5 text-sm text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+function Button({ children, variant = "primary", size = "md", disabled, onClick, type = "button", className = "" }) {
+  const base = "inline-flex items-center justify-center font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed";
+  const variants = {
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-400",
+    secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-300",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-300",
+    ghost: "bg-transparent text-indigo-600 hover:bg-indigo-50 focus:ring-indigo-300",
+  };
+  const sizes = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2.5 text-base",
+    lg: "px-6 py-3 text-lg",
+  };
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Badge({ children, color = "indigo" }) {
+  const colors = {
+    indigo: "bg-indigo-100 text-indigo-700",
+    amber: "bg-amber-100 text-amber-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    slate: "bg-slate-100 text-slate-600",
+  };
+  return (
+    <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${colors[color]}`}>
+      {children}
+    </span>
+  );
+}
+
+// ========================================
+// 🧮 D-Day Calculation Logic
+// ========================================
+const STORAGE_KEY = "dday-calculator-items";
+
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function diffDays(targetDate, baseDate) {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.round((targetDate.getTime() - baseDate.getTime()) / msPerDay);
+}
+
+function ddayLabel(n) {
+  if (n === 0) return "D-DAY";
+  if (n > 0) return `D-${n}`;
+  return `D+${Math.abs(n)}`;
+}
+
+function ddayColor(n) {
+  if (n === 0) return "emerald";
+  if (n > 0) return "indigo";
+  return "slate";
+}
+
+function formatDateKr(date) {
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
+function loadItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// ========================================
+// 📄 Page Component
+// ========================================
+function DdayCalculatorPage() {
+  const [items, setItems] = useState(loadItems);
+  const [title, setTitle] = useState("");
+  const [dateInput, setDateInput] = useState("");
+  const [error, setError] = useState("");
+  const base = useMemo(() => parseDate(todayStr()), []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {
+      /* storage unavailable; ignore */
+    }
+  }, [items]);
+
+  const handleTitleChange = useCallback((e) => {
+    setTitle(e.target.value);
+    setError("");
+  }, []);
+
+  const handleDateChange = useCallback((e) => {
+    setDateInput(e.target.value);
+    setError("");
+  }, []);
+
+  const handleAdd = useCallback(() => {
+    if (!title.trim()) {
+      setError("일정 이름을 입력해주세요.");
+      return;
+    }
+    const target = parseDate(dateInput);
+    if (!target) {
+      setError("올바른 날짜를 입력해주세요.");
+      return;
+    }
+    setItems((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: title.trim(), date: dateInput },
+    ]);
+    setTitle("");
+    setDateInput("");
+    setError("");
+  }, [title, dateInput]);
+
+  const handleRemove = useCallback((id) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [items]);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center px-4 py-10 sm:py-16">
+      <div className="w-full max-w-md">
+        <header className="text-center mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">📅 디데이 계산기</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            중요한 날짜까지 남은 일수(또는 지난 일수)를 계산합니다.
+          </p>
+        </header>
+
+        <Card>
+          <div className="space-y-5">
+            <Input
+              label="일정 이름"
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="예: 시험, 여행, 기념일"
+              error={error && !title.trim() ? error : ""}
+            />
+            <Input
+              label="날짜"
+              type="date"
+              value={dateInput}
+              onChange={handleDateChange}
+              error={error && title.trim() ? error : ""}
+            />
+            <Button className="w-full" onClick={handleAdd}>
+              디데이 추가
+            </Button>
+          </div>
+        </Card>
+
+        <div className="mt-6 space-y-3">
+          {sortedItems.length === 0 && (
+            <p className="text-center text-sm text-slate-400">
+              추가된 일정이 없습니다. 위에서 일정을 등록해보세요.
+            </p>
+          )}
+
+          {sortedItems.map((item) => {
+            const target = parseDate(item.date);
+            if (!target) return null;
+            const n = diffDays(target, base);
+            return (
+              <Card key={item.id} className="fade-in !p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{item.title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{formatDateKr(target)}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Badge color={ddayColor(n)}>{ddayLabel(n)}</Badge>
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(item.id)}
+                      aria-label={`${item.title} 삭제`}
+                      className="text-slate-300 hover:text-red-500 transition text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========================================
+// 🚀 App Component
+// ========================================
+function App() {
+  return <DdayCalculatorPage />;
+}
+
+// ========================================
+// Rendering
+// ========================================
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
