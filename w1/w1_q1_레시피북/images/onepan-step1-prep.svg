@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- cutting board -->
+  <rect x="70" y="130" width="260" height="90" rx="14" fill="#D9A066"/>
+  <rect x="70" y="130" width="260" height="90" rx="14" fill="none" stroke="#B87F4A" stroke-width="4"/>
+  <!-- garlic slices -->
+  <g fill="#FFF3D6" stroke="#E0C896" stroke-width="2">
+    <ellipse cx="120" cy="155" rx="16" ry="8"/>
+    <ellipse cx="150" cy="160" rx="16" ry="8"/>
+    <ellipse cx="120" cy="180" rx="16" ry="8"/>
+    <ellipse cx="150" cy="188" rx="16" ry="8"/>
+    <ellipse cx="180" cy="172" rx="16" ry="8"/>
+  </g>
+  <!-- garlic clove whole -->
+  <ellipse cx="105" cy="200" rx="12" ry="16" fill="#FFF3D6" stroke="#E0C896" stroke-width="2"/>
+  <!-- dried chili peppers -->
+  <g stroke="#B71C1C" stroke-width="2">
+    <path d="M230,150 Q245,165 235,190 Q225,200 220,190" fill="#E53935"/>
+    <path d="M255,155 Q270,172 258,195 Q248,205 244,195" fill="#D32F2F"/>
+  </g>
+  <!-- knife -->
+  <g transform="rotate(-20 300 100)">
+    <rect x="250" y="95" width="90" height="14" rx="4" fill="#B0BEC5" stroke="#78909C" stroke-width="2"/>
+    <rect x="335" y="92" width="30" height="20" rx="5" fill="#5D4037"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">1</text>
+</svg>

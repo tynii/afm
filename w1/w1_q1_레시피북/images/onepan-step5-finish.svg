@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- bowl -->
+  <path d="M90,150 Q90,215 200,215 Q310,215 310,150 Z" fill="#5C7C8A"/>
+  <path d="M90,150 Q90,210 200,210 Q310,210 310,150 Z" fill="#7B9CAB"/>
+  <ellipse cx="200" cy="150" rx="110" ry="26" fill="#8FB3C2"/>
+  <ellipse cx="200" cy="150" rx="95" ry="20" fill="#F2D98A"/>
+  <!-- pasta swirl -->
+  <g stroke="#E0B84D" stroke-width="3.5" fill="none" stroke-linecap="round">
+    <path d="M120,150 Q160,132 200,150 Q240,170 280,150"/>
+    <path d="M130,158 Q170,142 200,158 Q230,176 270,158"/>
+    <path d="M140,142 Q170,128 205,140 Q235,155 265,144"/>
+  </g>
+  <!-- parsley + cheese garnish -->
+  <g fill="#689F38">
+    <circle cx="185" cy="135" r="3"/>
+    <circle cx="225" cy="145" r="3"/>
+    <circle cx="165" cy="150" r="3"/>
+  </g>
+  <g fill="#FFF9E6" stroke="#EAD9A0" stroke-width="1">
+    <ellipse cx="210" cy="140" rx="8" ry="4" transform="rotate(20 210 140)"/>
+  </g>
+  <!-- fork -->
+  <g transform="rotate(20 330 90)">
+    <rect x="325" y="40" width="7" height="110" rx="3" fill="#B0BEC5"/>
+    <rect x="317" y="38" width="5" height="24" rx="2" fill="#B0BEC5"/>
+    <rect x="325" y="38" width="5" height="24" rx="2" fill="#B0BEC5"/>
+    <rect x="333" y="38" width="5" height="24" rx="2" fill="#B0BEC5"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">5</text>
+</svg>

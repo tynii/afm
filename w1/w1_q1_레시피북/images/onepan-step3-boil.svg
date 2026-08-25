@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- pan -->
+  <ellipse cx="200" cy="180" rx="140" ry="45" fill="#4A4A4A"/>
+  <ellipse cx="200" cy="172" rx="140" ry="45" fill="#616161"/>
+  <ellipse cx="200" cy="172" rx="118" ry="34" fill="#2E5A6B"/>
+  <!-- pan handle -->
+  <rect x="330" y="160" width="70" height="18" rx="9" fill="#616161"/>
+  <!-- water -->
+  <ellipse cx="200" cy="170" rx="110" ry="28" fill="#8FB3C2" opacity="0.7"/>
+  <!-- pasta strands submerged -->
+  <g stroke="#F2D98A" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M110,165 Q200,150 290,168"/>
+    <path d="M115,175 Q200,160 285,178"/>
+    <path d="M120,185 Q200,172 280,188"/>
+    <path d="M130,155 Q200,140 270,158"/>
+  </g>
+  <!-- bubbles -->
+  <g fill="#E3F2F7" opacity="0.9">
+    <circle cx="150" cy="155" r="4"/>
+    <circle cx="180" cy="148" r="3"/>
+    <circle cx="230" cy="152" r="4"/>
+    <circle cx="260" cy="160" r="3"/>
+    <circle cx="200" cy="145" r="3"/>
+  </g>
+  <!-- steam -->
+  <g stroke="#CFCFCF" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M170,115 C158,100 182,88 170,72"/>
+    <path d="M205,115 C193,100 217,88 205,72"/>
+    <path d="M240,115 C228,100 252,88 240,72"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">3</text>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- pan -->
+  <ellipse cx="200" cy="180" rx="140" ry="45" fill="#4A4A4A"/>
+  <ellipse cx="200" cy="172" rx="140" ry="45" fill="#616161"/>
+  <ellipse cx="200" cy="172" rx="118" ry="34" fill="#3A3A3A"/>
+  <!-- pan handle -->
+  <rect x="330" y="160" width="70" height="18" rx="9" fill="#616161"/>
+  <!-- glossy reduced sauce -->
+  <ellipse cx="200" cy="172" rx="105" ry="26" fill="#E0B84D" opacity="0.55"/>
+  <!-- pasta strands glossy tossed -->
+  <g stroke="#F2D98A" stroke-width="4.5" fill="none" stroke-linecap="round">
+    <path d="M120,170 Q160,150 200,170 Q240,192 280,170"/>
+    <path d="M130,180 Q170,162 200,180 Q230,198 270,180"/>
+    <path d="M140,158 Q170,140 205,155 Q235,175 265,160"/>
+  </g>
+  <!-- glossy highlight dots -->
+  <g fill="#FFF3D6" opacity="0.8">
+    <circle cx="170" cy="160" r="3"/>
+    <circle cx="220" cy="178" r="3"/>
+    <circle cx="245" cy="165" r="3"/>
+  </g>
+  <!-- motion lines for fast stirring -->
+  <g stroke="#9E9E9E" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6">
+    <path d="M140,130 Q200,110 260,130"/>
+    <path d="M150,120 Q200,102 250,120"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">4</text>
+</svg>

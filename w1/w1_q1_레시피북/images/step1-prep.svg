@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- cutting board -->
+  <rect x="70" y="130" width="260" height="90" rx="14" fill="#D9A066"/>
+  <rect x="70" y="130" width="260" height="90" rx="14" fill="none" stroke="#B87F4A" stroke-width="4"/>
+  <!-- diced spam cubes -->
+  <g>
+    <rect x="100" y="150" width="26" height="26" rx="4" fill="#E8998D" stroke="#C97164" stroke-width="2"/>
+    <rect x="132" y="150" width="26" height="26" rx="4" fill="#E8998D" stroke="#C97164" stroke-width="2"/>
+    <rect x="100" y="180" width="26" height="26" rx="4" fill="#E8998D" stroke="#C97164" stroke-width="2"/>
+    <rect x="132" y="180" width="26" height="26" rx="4" fill="#E8998D" stroke="#C97164" stroke-width="2"/>
+  </g>
+  <!-- green onion slices -->
+  <g>
+    <circle cx="210" cy="160" r="10" fill="#8BC34A" stroke="#689F38" stroke-width="2"/>
+    <circle cx="210" cy="160" r="3" fill="#FFF8F0"/>
+    <circle cx="235" cy="175" r="10" fill="#8BC34A" stroke="#689F38" stroke-width="2"/>
+    <circle cx="235" cy="175" r="3" fill="#FFF8F0"/>
+    <circle cx="205" cy="195" r="10" fill="#8BC34A" stroke="#689F38" stroke-width="2"/>
+    <circle cx="205" cy="195" r="3" fill="#FFF8F0"/>
+  </g>
+  <!-- garlic cloves -->
+  <g>
+    <ellipse cx="280" cy="165" rx="12" ry="16" fill="#FFF3D6" stroke="#E0C896" stroke-width="2"/>
+    <ellipse cx="300" cy="175" rx="12" ry="16" fill="#FFF3D6" stroke="#E0C896" stroke-width="2"/>
+    <ellipse cx="285" cy="195" rx="12" ry="16" fill="#FFF3D6" stroke="#E0C896" stroke-width="2"/>
+  </g>
+  <!-- knife -->
+  <g transform="rotate(-20 300 100)">
+    <rect x="250" y="95" width="90" height="14" rx="4" fill="#B0BEC5" stroke="#78909C" stroke-width="2"/>
+    <rect x="335" y="92" width="30" height="20" rx="5" fill="#5D4037"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">1</text>
+</svg>

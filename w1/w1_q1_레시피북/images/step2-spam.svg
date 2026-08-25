@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260">
+  <rect width="400" height="260" fill="#FFF8F0"/>
+  <!-- pan -->
+  <ellipse cx="200" cy="180" rx="140" ry="45" fill="#4A4A4A"/>
+  <ellipse cx="200" cy="172" rx="140" ry="45" fill="#616161"/>
+  <ellipse cx="200" cy="172" rx="118" ry="34" fill="#3A3A3A"/>
+  <!-- pan handle -->
+  <rect x="330" y="160" width="70" height="18" rx="9" fill="#616161"/>
+  <!-- spam cubes browning -->
+  <g>
+    <rect x="140" y="150" width="30" height="30" rx="5" fill="#D98A6B" stroke="#A85D3C" stroke-width="2"/>
+    <rect x="180" y="160" width="30" height="30" rx="5" fill="#E8998D" stroke="#A85D3C" stroke-width="2"/>
+    <rect x="220" y="150" width="30" height="30" rx="5" fill="#D98A6B" stroke="#A85D3C" stroke-width="2"/>
+    <rect x="160" y="180" width="30" height="24" rx="5" fill="#E8998D" stroke="#A85D3C" stroke-width="2"/>
+    <rect x="200" y="182" width="30" height="24" rx="5" fill="#D98A6B" stroke="#A85D3C" stroke-width="2"/>
+  </g>
+  <!-- steam -->
+  <g stroke="#CFCFCF" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M170,120 C160,105 180,95 170,80">
+      <animate attributeName="d" values="M170,120 C160,105 180,95 170,80;M170,120 C180,105 160,95 170,80;M170,120 C160,105 180,95 170,80" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M210,120 C200,105 220,95 210,80"/>
+    <path d="M240,120 C230,105 250,95 240,80"/>
+  </g>
+  <!-- title badge -->
+  <circle cx="40" cy="40" r="26" fill="#FF8C42"/>
+  <text x="40" y="49" font-family="Arial, sans-serif" font-size="26" fill="white" text-anchor="middle" font-weight="bold">2</text>
+</svg>
