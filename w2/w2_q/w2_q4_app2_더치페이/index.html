@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>더치페이 계산기</title>
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<!-- ⚠️ 모든 CDN은 버전을 명시적으로 고정한다. Babel 은 반드시 7.x 로 고정 (8.x 미지원). -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.18s ease-out; }
+
+  /* 정산 결과 = 영수증 스타일: 모노스페이스 + 톱니 모양 절취선 */
+  .receipt-paper {
+    position: relative;
+    background: #fffdf8;
+    font-family: 'Courier New', ui-monospace, SFMono-Regular, Menlo, monospace;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 28px -16px rgba(15, 23, 42, 0.35);
+  }
+  .receipt-paper::before,
+  .receipt-paper::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 10px;
+    background-image:
+      linear-gradient(-45deg, transparent 6px, #f1f5f9 6px),
+      linear-gradient(45deg, transparent 6px, #f1f5f9 6px);
+    background-size: 12px 12px;
+    background-repeat: repeat-x;
+  }
+  .receipt-paper::before { top: -1px; }
+  .receipt-paper::after { bottom: -1px; transform: rotate(180deg); }
+  .receipt-dot {
+    flex: 1;
+    border-bottom: 1px dotted #cbd5e1;
+    margin: 0 6px;
+    transform: translateY(-4px);
+  }
+  .receipt-barcode {
+    height: 26px;
+    background-image: repeating-linear-gradient(90deg, #334155 0px, #334155 2px, transparent 2px, transparent 5px);
+  }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+
+const { useState, useMemo, useCallback } = React;
+
+// ========================================
+// 🔧 Utilities
+// ========================================
+
+function formatWon(n) {
+  return `${Math.round(n).toLocaleString('ko-KR')}원`;
+}
+
+let uidCounter = 0;
+function uid() {
+  uidCounter += 1;
+  return `id-${Date.now()}-${uidCounter}`;
+}
+
+// 항목 금액을 참여자 수만큼 나누되, 나머지는 앞쪽 참여자부터 1원씩 배분해 총합 오차를 없앤다.
+function splitAmount(amount, participantIds) {
+  const count = participantIds.length;
+  const base = Math.floor(amount / count);
+  const remainder = amount - base * count;
+  const shares = {};
+  participantIds.forEach((pid, idx) => {
+    shares[pid] = base + (idx < remainder ? 1 : 0);
+  });
+  return shares;
+}
+
+// 잔액(+받을 돈 / -보낼 돈)을 최소 송금 횟수로 정산하는 그리디 알고리즘
+function computeSettlements(balances) {
+  const creditors = balances
+    .filter((b) => b.balance > 0)
+    .map((b) => ({ ...b }))
+    .sort((a, b) => b.balance - a.balance);
+  const debtors = balances
+    .filter((b) => b.balance < 0)
+    .map((b) => ({ ...b, balance: -b.balance }))
+    .sort((a, b) => b.balance - a.balance);
+
+  const result = [];
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].balance, creditors[j].balance);
+    if (pay >= 1) {
+      result.push({ from: debtors[i].name, to: creditors[j].name, amount: Math.round(pay) });
+    }
+    debtors[i].balance -= pay;
+    creditors[j].balance -= pay;
+    if (debtors[i].balance < 1) i += 1;
+    if (creditors[j].balance < 1) j += 1;
+  }
+  return result;
+}
+
+// ========================================
+// 🎨 Design System Components
+// ========================================
+
+function Button({ variant = 'primary', size = 'md', disabled = false, onClick, className = '', type = 'button', children }) {
+  const base = 'inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+  const variants = {
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
+    secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400',
+    danger: 'bg-rose-50 text-rose-600 hover:bg-rose-100 focus:ring-rose-400',
+    ghost: 'bg-transparent text-slate-500 hover:bg-slate-100 focus:ring-slate-300',
+  };
+  const sizes = {
+    sm: 'text-xs px-2.5 py-1.5',
+    md: 'text-sm px-4 py-2',
+    lg: 'text-base px-5 py-2.5',
+  };
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, type = 'text', error, className = '', ...rest }) {
+  return (
+    <label className={`block ${className}`}>
+      {label && <span className="block text-xs font-medium text-slate-600 mb-1">{label}</span>}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className={`w-full rounded-lg border px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${error ? 'border-rose-400' : 'border-slate-300'}`}
+        {...rest}
+      />
+      {error && <span className="block text-xs text-rose-500 mt-1">{error}</span>}
+    </label>
+  );
+}
+
+function Select({ label, value, onChange, options, className = '' }) {
+  return (
+    <label className={`block ${className}`}>
+      {label && <span className="block text-xs font-medium text-slate-600 mb-1">{label}</span>}
+      <select
+        value={value}
+        onChange={onChange}
+        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Card({ children, className = '' }) {
+  return (
+    <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-5 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Badge({ variant = 'neutral', children }) {
+  const variants = {
+    neutral: 'bg-slate-100 text-slate-600',
+    positive: 'bg-emerald-50 text-emerald-600',
+    negative: 'bg-rose-50 text-rose-600',
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${variants[variant]}`}>
+      {children}
+    </span>
+  );
+}
+
+function EmptyState({ icon, title, description }) {
+  return (
+    <div className="text-center py-8 text-slate-400">
+      <div className="text-3xl mb-2">{icon}</div>
+      <p className="text-sm font-medium text-slate-500">{title}</p>
+      {description && <p className="text-xs mt-1">{description}</p>}
+    </div>
+  );
+}
+
+// ========================================
+// 🧩 Common Components
+// ========================================
+
+function Header({ onReset }) {
+  return (
+    <header className="max-w-5xl mx-auto px-4 pt-8 pb-4 flex items-center justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <span>🧾</span> 더치페이 계산기
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">참여자와 지출 항목을 입력하면 정확한 정산 금액을 계산해드려요.</p>
+      </div>
+      <Button variant="ghost" size="sm" onClick={onReset}>전체 초기화</Button>
+    </header>
+  );
+}
+
+// ========================================
+// 📄 Section: 참여자 관리
+// ========================================
+
+function ParticipantSection({ participants, onAdd, onRemove }) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+
+  const handleAdd = () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('이름을 입력해주세요.');
+      return;
+    }
+    if (participants.some((p) => p.name === trimmed)) {
+      setError('이미 등록된 이름이에요.');
+      return;
+    }
+    onAdd(trimmed);
+    setName('');
+    setError('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAdd();
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-slate-700 mb-3">👥 참여자</h2>
+      <div className="flex items-start gap-2">
+        <Input
+          className="flex-1"
+          value={name}
+          onChange={(e) => { setName(e.target.value); setError(''); }}
+          onKeyDown={handleKeyDown}
+          placeholder="이름 입력 후 Enter"
+          error={error}
+        />
+        <Button onClick={handleAdd}>추가</Button>
+      </div>
+
+      {participants.length === 0 ? (
+        <EmptyState icon="🙋" title="아직 참여자가 없어요" description="더치페이할 사람을 먼저 추가해주세요." />
+      ) : (
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {participants.map((p) => (
+            <li key={p.id} className="fade-in flex items-center gap-1.5 bg-slate-100 rounded-full pl-3 pr-1.5 py-1 text-sm text-slate-700">
+              {p.name}
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                aria-label={`${p.name} 삭제`}
+                className="w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// ========================================
+// 📄 Section: 지출 항목 입력
+// ========================================
+
+function ItemForm({ participants, onAdd, onUpdate, editingItem, onCancelEdit }) {
+  const isEditing = Boolean(editingItem);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [payerId, setPayerId] = useState(participants[0]?.id || '');
+  const [participantIds, setParticipantIds] = useState(participants.map((p) => p.id));
+  const [splitMode, setSplitMode] = useState('equal');
+  const [customShares, setCustomShares] = useState({});
+  const [errors, setErrors] = useState({});
+
+  React.useEffect(() => {
+    if (!editingItem) return;
+    setName(editingItem.name);
+    setAmount(String(editingItem.amount));
+    setPayerId(editingItem.payerId);
+    setParticipantIds([...editingItem.participantIds]);
+    setSplitMode(editingItem.splitMode || 'equal');
+    const shares = {};
+    if (editingItem.splitMode === 'custom' && editingItem.customShares) {
+      editingItem.participantIds.forEach((pid) => {
+        shares[pid] = String(editingItem.customShares[pid] ?? '');
+      });
+    }
+    setCustomShares(shares);
+    setErrors({});
+  }, [editingItem]);
+
+  React.useEffect(() => {
+    if (editingItem) return;
+    if (!payerId && participants[0]) setPayerId(participants[0].id);
+    setParticipantIds((prev) => prev.filter((id) => participants.some((p) => p.id === id)));
+  }, [participants]);
+
+  const toggleParticipant = (id) => {
+    setParticipantIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setCustomShares((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const selectAll = () => setParticipantIds(participants.map((p) => p.id));
+  const clearAll = () => { setParticipantIds([]); setCustomShares({}); };
+
+  const amountNum = Number(amount) || 0;
+  const customTotal = participantIds.reduce((sum, pid) => sum + (Number(customShares[pid]) || 0), 0);
+  const customDiff = amountNum - customTotal;
+
+  const resetForm = () => {
+    setName('');
+    setAmount('');
+    setParticipantIds(participants.map((p) => p.id));
+    setSplitMode('equal');
+    setCustomShares({});
+    setErrors({});
+  };
+
+  const handleSubmit = () => {
+    const nextErrors = {};
+    const trimmedName = name.trim();
+    const parsedAmount = Number(amount);
+
+    if (!trimmedName) nextErrors.name = '항목명을 입력해주세요.';
+    if (!amount || parsedAmount <= 0) nextErrors.amount = '0보다 큰 금액을 입력해주세요.';
+    if (!payerId) nextErrors.payerId = '결제자를 선택해주세요.';
+    if (participantIds.length === 0) nextErrors.participants = '함께 나눌 참여자를 선택해주세요.';
+    if (splitMode === 'custom' && participantIds.length > 0 && customDiff !== 0) {
+      nextErrors.custom = `분담 금액 합계가 총액과 ${formatWon(Math.abs(customDiff))} 차이나요.`;
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    const payload = {
+      id: isEditing ? editingItem.id : uid(),
+      name: trimmedName,
+      amount: Math.round(parsedAmount),
+      payerId,
+      participantIds: [...participantIds],
+      splitMode,
+      customShares:
+        splitMode === 'custom'
+          ? Object.fromEntries(participantIds.map((pid) => [pid, Math.round(Number(customShares[pid]) || 0)]))
+          : undefined,
+    };
+
+    if (isEditing) {
+      onUpdate(payload);
+    } else {
+      onAdd(payload);
+      resetForm();
+    }
+  };
+
+  if (participants.length === 0) {
+    return (
+      <Card>
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">🧾 지출 항목 추가</h2>
+        <EmptyState icon="⏳" title="참여자를 먼저 추가해주세요" />
+      </Card>
+    );
+  }
+
+  return (
+    <Card className={isEditing ? 'ring-2 ring-indigo-300' : ''}>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-slate-700">{isEditing ? '✏️ 지출 항목 수정' : '🧾 지출 항목 추가'}</h2>
+        {isEditing && (
+          <button type="button" onClick={onCancelEdit} className="text-xs text-slate-400 hover:underline">취소</button>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Input
+          label="항목명"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="예: 저녁 식사"
+          error={errors.name}
+        />
+        <Input
+          label="금액"
+          type="number"
+          min="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="예: 45000"
+          error={errors.amount}
+        />
+        <Select
+          label="결제자"
+          value={payerId}
+          onChange={(e) => setPayerId(e.target.value)}
+          options={participants.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="block text-xs font-medium text-slate-600">함께 나눌 사람</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={selectAll} className="text-xs text-indigo-600 hover:underline">전체선택</button>
+              <button type="button" onClick={clearAll} className="text-xs text-slate-400 hover:underline">전체해제</button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {participants.map((p) => {
+              const active = participantIds.includes(p.id);
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  onClick={() => toggleParticipant(p.id)}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                    active
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {p.name}
+                </button>
+              );
+            })}
+          </div>
+          {errors.participants && <span className="block text-xs text-rose-500 mt-1">{errors.participants}</span>}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <span className="block text-xs font-medium text-slate-600 mb-1.5">분담 방식</span>
+        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-xs">
+          <button
+            type="button"
+            onClick={() => setSplitMode('equal')}
+            className={`px-3 py-1.5 ${splitMode === 'equal' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            1/N 균등분배
+          </button>
+          <button
+            type="button"
+            onClick={() => setSplitMode('custom')}
+            className={`px-3 py-1.5 border-l border-slate-300 ${splitMode === 'custom' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            금액 직접입력
+          </button>
+        </div>
+
+        {splitMode === 'custom' && participantIds.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {participantIds.map((pid) => {
+              const p = participants.find((x) => x.id === pid);
+              return (
+                <div key={pid} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-16 shrink-0 truncate">{p?.name}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={customShares[pid] ?? ''}
+                    onChange={(e) => setCustomShares((prev) => ({ ...prev, [pid]: e.target.value }))}
+                    placeholder="0"
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <span className="text-xs text-slate-400">원</span>
+                </div>
+              );
+            })}
+            <div className={`text-xs ${customDiff === 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+              합계 {formatWon(customTotal)} / 총액 {formatWon(amountNum)}
+              {customDiff !== 0 && ` (차이 ${formatWon(Math.abs(customDiff))})`}
+            </div>
+            {errors.custom && <span className="block text-xs text-rose-500">{errors.custom}</span>}
+          </div>
+        )}
+      </div>
+
+      <Button className="mt-4" onClick={handleSubmit}>{isEditing ? '수정 완료' : '항목 추가'}</Button>
+    </Card>
+  );
+}
+
+// ========================================
+// 📄 Section: 지출 항목 리스트
+// ========================================
+
+function ItemList({ items, participantMap, onRemove, onEdit }) {
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-slate-700 mb-3">📋 지출 내역 ({items.length})</h2>
+      {items.length === 0 ? (
+        <EmptyState icon="🧺" title="아직 등록된 지출이 없어요" />
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <li key={item.id} className="fade-in py-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">{item.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {formatWon(item.amount)} · {participantMap[item.payerId]?.name || '알 수 없음'} 결제 · {item.participantIds.length}명 분담
+                  {' · '}
+                  {item.splitMode === 'custom' ? '금액 직접입력' : '1/N 균등'}
+                </p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {item.participantIds.map((pid) => (
+                    <span key={pid} className="text-[11px] bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">
+                      {participantMap[pid]?.name || '?'}
+                      {item.splitMode === 'custom' && item.customShares && ` ${formatWon(item.customShares[pid] || 0)}`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  aria-label={`${item.name} 수정`}
+                  className="text-slate-400 hover:text-indigo-600 text-sm px-1"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(item.id)}
+                  aria-label={`${item.name} 삭제`}
+                  className="text-slate-300 hover:text-rose-500 text-sm px-1"
+                >
+                  삭제
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// ========================================
+// 📄 Section: 정산 결과 (영수증 스타일)
+// ========================================
+
+function ReceiptRow({ label, value, emphasis }) {
+  return (
+    <div className={`flex items-baseline text-sm ${emphasis ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+      <span className="whitespace-nowrap">{label}</span>
+      <span className="receipt-dot"></span>
+      <span className="whitespace-nowrap">{value}</span>
+    </div>
+  );
+}
+
+function ReceiptSection({ participants, items }) {
+  const { totalAmount, balances, settlements } = useMemo(() => {
+    const consumed = {};
+    const paid = {};
+    participants.forEach((p) => { consumed[p.id] = 0; paid[p.id] = 0; });
+
+    let total = 0;
+    items.forEach((item) => {
+      total += item.amount;
+      if (paid[item.payerId] !== undefined) paid[item.payerId] += item.amount;
+      const shares =
+        item.splitMode === 'custom' && item.customShares
+          ? item.customShares
+          : splitAmount(item.amount, item.participantIds);
+      Object.entries(shares).forEach(([pid, share]) => {
+        if (consumed[pid] !== undefined) consumed[pid] += share;
+      });
+    });
+
+    const balanceList = participants.map((p) => ({
+      id: p.id,
+      name: p.name,
+      consumed: consumed[p.id] || 0,
+      paid: paid[p.id] || 0,
+      balance: (paid[p.id] || 0) - (consumed[p.id] || 0),
+    }));
+
+    return {
+      totalAmount: total,
+      balances: balanceList,
+      settlements: computeSettlements(balanceList),
+    };
+  }, [participants, items]);
+
+  if (participants.length === 0 || items.length === 0) {
+    return (
+      <Card className="sticky top-6">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">💰 정산 결과</h2>
+        <EmptyState icon="📊" title="참여자와 지출을 등록하면" description="여기에 정산 영수증이 표시돼요." />
+      </Card>
+    );
+  }
+
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+  return (
+    <div className="receipt-paper sticky top-6 px-6 pt-8 pb-8 text-slate-700">
+      <div className="text-center mb-4">
+        <p className="text-base font-bold tracking-[0.25em]">DUTCH PAY</p>
+        <p className="text-[11px] text-slate-400 mt-1">정산 영수증 · {today}</p>
+      </div>
+      <div className="border-t border-dashed border-slate-300 my-3"></div>
+
+      <div className="space-y-1.5">
+        {balances.map((b) => (
+          <ReceiptRow key={b.id} label={b.name} value={formatWon(b.consumed)} />
+        ))}
+      </div>
+
+      <div className="border-t-2 border-double border-slate-400 mt-3 pt-2">
+        <ReceiptRow label="TOTAL" value={formatWon(totalAmount)} emphasis />
+      </div>
+
+      <div className="border-t border-dashed border-slate-300 my-3"></div>
+      <div className="space-y-1.5">
+        {balances.map((b) => (
+          <div key={b.id} className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">{b.name} 결제 {formatWon(b.paid)}</span>
+            {b.balance > 0.5 ? (
+              <Badge variant="positive">+{formatWon(b.balance)}</Badge>
+            ) : b.balance < -0.5 ? (
+              <Badge variant="negative">{formatWon(b.balance)}</Badge>
+            ) : (
+              <Badge variant="neutral">정산완료</Badge>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-dashed border-slate-300 my-3 pt-1 text-center text-[11px] text-slate-400 tracking-widest">
+        - 송금 안내 -
+      </div>
+
+      {settlements.length === 0 ? (
+        <p className="text-center text-xs text-slate-400 py-2">🎉 모두 정산이 끝났어요!</p>
+      ) : (
+        <div className="space-y-1.5">
+          {settlements.map((s, idx) => (
+            <ReceiptRow key={idx} label={`${s.from} -> ${s.to}`} value={formatWon(s.amount)} />
+          ))}
+        </div>
+      )}
+
+      <div className="border-t border-dashed border-slate-300 mt-4 mb-3"></div>
+      <p className="text-center text-[11px] text-slate-400 mb-3">즐거운 정산 되세요 :)</p>
+      <div className="receipt-barcode"></div>
+    </div>
+  );
+}
+
+// ========================================
+// 🚀 App Component
+// ========================================
+
+function App() {
+  const [participants, setParticipants] = useState([]);
+  const [items, setItems] = useState([]);
+  const [editingItemId, setEditingItemId] = useState(null);
+
+  const participantMap = useMemo(() => {
+    const map = {};
+    participants.forEach((p) => { map[p.id] = p; });
+    return map;
+  }, [participants]);
+
+  const editingItem = useMemo(
+    () => items.find((item) => item.id === editingItemId) || null,
+    [items, editingItemId]
+  );
+
+  const addParticipant = useCallback((name) => {
+    setParticipants((prev) => [...prev, { id: uid(), name }]);
+  }, []);
+
+  const removeParticipant = useCallback((id) => {
+    setParticipants((prev) => prev.filter((p) => p.id !== id));
+    setItems((prev) =>
+      prev
+        .map((item) => {
+          const customShares = item.customShares ? { ...item.customShares } : undefined;
+          if (customShares) delete customShares[id];
+          return {
+            ...item,
+            participantIds: item.participantIds.filter((pid) => pid !== id),
+            customShares,
+            payerId: item.payerId === id ? '' : item.payerId,
+          };
+        })
+        .filter((item) => item.participantIds.length > 0 && item.payerId)
+    );
+  }, []);
+
+  const addItem = useCallback((item) => {
+    setItems((prev) => [...prev, item]);
+  }, []);
+
+  const updateItem = useCallback((updated) => {
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setEditingItemId(null);
+  }, []);
+
+  const startEdit = useCallback((item) => {
+    setEditingItemId(item.id);
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingItemId(null);
+  }, []);
+
+  const removeItem = useCallback((id) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    setEditingItemId((prev) => (prev === id ? null : prev));
+  }, []);
+
+  const resetAll = useCallback(() => {
+    if (window.confirm('참여자와 지출 내역을 모두 초기화할까요?')) {
+      setParticipants([]);
+      setItems([]);
+      setEditingItemId(null);
+    }
+  }, []);
+
+  return (
+    <div className="pb-16">
+      <Header onReset={resetAll} />
+      <main className="max-w-5xl mx-auto px-4 grid lg:grid-cols-2 gap-6 items-start">
+        <div className="space-y-4">
+          <ParticipantSection participants={participants} onAdd={addParticipant} onRemove={removeParticipant} />
+          <ItemForm
+            participants={participants}
+            onAdd={addItem}
+            onUpdate={updateItem}
+            editingItem={editingItem}
+            onCancelEdit={cancelEdit}
+          />
+          <ItemList items={items} participantMap={participantMap} onRemove={removeItem} onEdit={startEdit} />
+        </div>
+        <ReceiptSection participants={participants} items={items} />
+      </main>
+    </div>
+  );
+}
+
+// ========================================
+// Rendering
+// ========================================
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>
