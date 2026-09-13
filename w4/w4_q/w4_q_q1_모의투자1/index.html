@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>모의투자</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    const MARKETS = [
+      { code: 'KRW-BTC', label: '비트코인' },
+      { code: 'KRW-ETH', label: '이더리움' },
+      { code: 'KRW-XRP', label: '리플' },
+      { code: 'KRW-SOL', label: '솔라나' },
+      { code: 'KRW-DOGE', label: '도지코인' },
+      { code: 'KRW-ADA', label: '에이다' },
+      { code: 'KRW-AVAX', label: '아발란체' },
+      { code: 'KRW-TRX', label: '트론' },
+    ];
+
+    const START_CASH = 1000000;
+
+    function formatKRW(n) {
+      return Math.round(n).toLocaleString('ko-KR') + '원';
+    }
+
+    function formatQty(n) {
+      return Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 8 });
+    }
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+    }
+
+    function Watchlist({ prices, market, setMarket }) {
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+            {MARKETS.map((m) => {
+              const p = prices[m.code];
+              const up = p && p.signed_change_rate >= 0;
+              const active = m.code === market;
+              return (
+                <button
+                  key={m.code}
+                  onClick={() => setMarket(m.code)}
+                  className={`text-left rounded-lg px-2 py-1.5 border ${active ? 'border-indigo-400 bg-indigo-50' : 'border-transparent hover:bg-slate-50'}`}
+                >
+                  <p className="text-[11px] text-slate-500 truncate">{m.label}</p>
+                  {p ? (
+                    <>
+                      <p className="text-xs font-semibold text-slate-800 truncate">{formatKRW(p.trade_price)}</p>
+                      <p className={`text-[10px] font-medium ${up ? 'text-red-500' : 'text-blue-500'}`}>
+                        {(p.signed_change_rate * 100).toFixed(2)}%
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-300">-</p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function CandleChart({ candles, loading }) {
+      const width = 720;
+      const height = 220;
+      const padding = 8;
+
+      if (loading || candles.length === 0) {
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <h2 className="text-sm font-semibold text-slate-500 mb-3">1시간봉 차트 (최근 200개)</h2>
+            <p className="text-slate-400 text-sm py-16 text-center">차트 불러오는 중...</p>
+          </div>
+        );
+      }
+
+      const highs = candles.map((c) => c.high);
+      const lows = candles.map((c) => c.low);
+      const maxPrice = Math.max(...highs);
+      const minPrice = Math.min(...lows);
+      const range = maxPrice - minPrice || 1;
+
+      const slotWidth = (width - padding * 2) / candles.length;
+      const bodyWidth = Math.max(slotWidth * 0.6, 1);
+
+      const yFor = (price) => padding + (1 - (price - minPrice) / range) * (height - padding * 2);
+
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <h2 className="text-sm font-semibold text-slate-500 mb-3">1시간봉 차트 (최근 {candles.length}개)</h2>
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-56">
+            {candles.map((c, i) => {
+              const x = padding + i * slotWidth + slotWidth / 2;
+              const up = c.close >= c.open;
+              const color = up ? '#ef4444' : '#3b82f6';
+              const bodyTop = yFor(Math.max(c.open, c.close));
+              const bodyBottom = yFor(Math.min(c.open, c.close));
+              const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
+              return (
+                <g key={c.time}>
+                  <line x1={x} x2={x} y1={yFor(c.high)} y2={yFor(c.low)} stroke={color} strokeWidth="1" />
+                  <rect
+                    x={x - bodyWidth / 2}
+                    y={bodyTop}
+                    width={bodyWidth}
+                    height={bodyHeight}
+                    fill={color}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+          <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+            <span>{formatKRW(minPrice)}</span>
+            <span>{formatKRW(maxPrice)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    function PriceCard({ market, setMarket, price, loading }) {
+      const changeColor = price && price.signed_change_rate >= 0 ? 'text-red-500' : 'text-blue-500';
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <select
+              value={market}
+              onChange={(e) => setMarket(e.target.value)}
+              className="text-sm font-semibold border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              {MARKETS.map((m) => (
+                <option key={m.code} value={m.code}>{m.label} ({m.code})</option>
+              ))}
+            </select>
+            {loading && <span className="text-xs text-slate-400">갱신 중...</span>}
+          </div>
+          {price ? (
+            <div>
+              <p className="text-3xl font-bold text-slate-800">{formatKRW(price.trade_price)}</p>
+              <p className={`text-sm font-medium mt-1 ${changeColor}`}>
+                {(price.signed_change_rate * 100).toFixed(2)}%
+                <span className="text-slate-400 font-normal ml-2">
+                  고가 {formatKRW(price.high_price)} · 저가 {formatKRW(price.low_price)}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <p className="text-slate-400">가격 불러오는 중...</p>
+          )}
+        </div>
+      );
+    }
+
+    function WalletCard({ wallet }) {
+      if (!wallet) {
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <p className="text-slate-400">지갑 불러오는 중...</p>
+          </div>
+        );
+      }
+      const rate = wallet.profit_rate * 100;
+      const rateColor = rate >= 0 ? 'text-red-500' : 'text-blue-500';
+      const holdingsList = Object.entries(wallet.holdings || {});
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <h2 className="text-sm font-semibold text-slate-500 mb-3">내 지갑</h2>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div>
+              <p className="text-xs text-slate-400">현금</p>
+              <p className="font-semibold text-slate-800">{formatKRW(wallet.cash)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">평가금액</p>
+              <p className="font-semibold text-slate-800">{formatKRW(wallet.evaluation)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">수익률</p>
+              <p className={`font-semibold ${rateColor}`}>{rate.toFixed(2)}%</p>
+            </div>
+          </div>
+          {holdingsList.length > 0 && (
+            <div className="border-t border-slate-100 pt-3 space-y-2">
+              {holdingsList.map(([code, info]) => {
+                const pnlColor = info.unrealizedPnl >= 0 ? 'text-red-500' : 'text-blue-500';
+                return (
+                  <div key={code} className="text-sm text-slate-600">
+                    <div className="flex justify-between font-medium">
+                      <span>{code}</span>
+                      <span>{formatQty(info.amount)} ({formatKRW(info.value)})</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                      <span>평균 매수가 {formatKRW(info.avgPrice)}</span>
+                      <span className={pnlColor}>
+                        {info.unrealizedPnl >= 0 ? '+' : ''}{formatKRW(info.unrealizedPnl)} ({(info.unrealizedPnlRate * 100).toFixed(2)}%)
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function OrderForm({ market, price, onSubmit }) {
+      const [side, setSide] = useState('buy');
+      const [amount, setAmount] = useState('');
+      const [memo, setMemo] = useState('');
+      const [submitting, setSubmitting] = useState(false);
+      const [error, setError] = useState('');
+
+      const qty = Number(amount);
+      const estimatedCost = price && qty > 0 ? price.trade_price * qty : 0;
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!qty || qty <= 0) {
+          setError('수량을 입력하세요');
+          return;
+        }
+        if (!memo.trim()) {
+          setError('매수/매도 이유(메모)를 입력하세요');
+          return;
+        }
+        setSubmitting(true);
+        try {
+          await onSubmit({ market, side, amount: qty, memo: memo.trim() });
+          setAmount('');
+          setMemo('');
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      return (
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-500">매수 / 매도</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSide('buy')}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold ${side === 'buy' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+            >
+              매수
+            </button>
+            <button
+              type="button"
+              onClick={() => setSide('sell')}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold ${side === 'sell' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+            >
+              매도
+            </button>
+          </div>
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder={`수량 (${market})`}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          {estimatedCost > 0 && (
+            <p className="text-xs text-slate-400">예상 {side === 'buy' ? '매수' : '매도'} 금액: {formatKRW(estimatedCost)}</p>
+          )}
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="왜 매수/매도 하는지 이유를 적어주세요 (필수)"
+            rows={2}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          />
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className={`w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${side === 'buy' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'}`}
+          >
+            {submitting ? '처리 중...' : `${market} ${side === 'buy' ? '매수' : '매도'}하기`}
+          </button>
+        </form>
+      );
+    }
+
+    function OrderHistory({ orders }) {
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <h2 className="text-sm font-semibold text-slate-500 mb-3">주문 내역</h2>
+          {orders.length === 0 ? (
+            <p className="text-slate-400 text-sm text-center py-6">아직 주문 내역이 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="py-2 pr-3">시간</th>
+                    <th className="py-2 pr-3">마켓</th>
+                    <th className="py-2 pr-3">구분</th>
+                    <th className="py-2 pr-3">수량</th>
+                    <th className="py-2 pr-3">체결가</th>
+                    <th className="py-2">메모</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => (
+                    <tr key={o.id} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(o.created_at)}</td>
+                      <td className="py-2 pr-3 font-medium text-slate-700">{o.market}</td>
+                      <td className={`py-2 pr-3 font-semibold ${o.side === 'buy' ? 'text-red-500' : 'text-blue-500'}`}>
+                        {o.side === 'buy' ? '매수' : '매도'}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600">{formatQty(o.amount)}</td>
+                      <td className="py-2 pr-3 text-slate-600">{formatKRW(o.price)}</td>
+                      <td className="py-2 text-slate-500 max-w-xs truncate" title={o.memo}>{o.memo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [market, setMarket] = useState('KRW-BTC');
+      const [price, setPrice] = useState(null);
+      const [priceLoading, setPriceLoading] = useState(false);
+      const [watchlistPrices, setWatchlistPrices] = useState({});
+      const [candles, setCandles] = useState([]);
+      const [candlesLoading, setCandlesLoading] = useState(false);
+      const [wallet, setWallet] = useState(null);
+      const [orders, setOrders] = useState([]);
+      const [toast, setToast] = useState('');
+
+      const fetchPrice = useCallback(async () => {
+        setPriceLoading(true);
+        try {
+          const res = await fetch(`/api/price?market=${market}`);
+          const json = await res.json();
+          if (json.success) setPrice(json.data);
+        } finally {
+          setPriceLoading(false);
+        }
+      }, [market]);
+
+      const fetchWatchlist = useCallback(async () => {
+        const results = await Promise.all(
+          MARKETS.map(async (m) => {
+            const res = await fetch(`/api/price?market=${m.code}`);
+            const json = await res.json();
+            return [m.code, json.success ? json.data : null];
+          })
+        );
+        setWatchlistPrices(Object.fromEntries(results));
+      }, []);
+
+      const fetchCandles = useCallback(async () => {
+        setCandlesLoading(true);
+        try {
+          const res = await fetch(`/api/candles?market=${market}&unit=60&count=200`);
+          const json = await res.json();
+          if (json.success) setCandles(json.data);
+        } finally {
+          setCandlesLoading(false);
+        }
+      }, [market]);
+
+      const fetchWallet = useCallback(async () => {
+        const res = await fetch('/api/wallet');
+        const json = await res.json();
+        if (json.success) setWallet(json.data);
+      }, []);
+
+      const fetchOrders = useCallback(async () => {
+        const res = await fetch('/api/orders');
+        const json = await res.json();
+        if (json.success) setOrders(json.data);
+      }, []);
+
+      useEffect(() => {
+        setPrice(null);
+        fetchPrice();
+        setCandles([]);
+        fetchCandles();
+      }, [market, fetchPrice, fetchCandles]);
+
+      useEffect(() => {
+        fetchWallet();
+        fetchOrders();
+        fetchWatchlist();
+        const priceTimer = setInterval(fetchPrice, 5000);
+        const watchlistTimer = setInterval(fetchWatchlist, 10000);
+        return () => {
+          clearInterval(priceTimer);
+          clearInterval(watchlistTimer);
+        };
+      }, [fetchPrice, fetchWallet, fetchOrders, fetchWatchlist]);
+
+      const handleOrder = async (order) => {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(order),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || '주문 실패');
+        setToast(`${order.side === 'buy' ? '매수' : '매도'} 완료!`);
+        setTimeout(() => setToast(''), 2000);
+        await Promise.all([fetchWallet(), fetchOrders()]);
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto px-4 py-10 space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-800">📈 나만의 모의투자</h1>
+            <span className="text-xs text-slate-400">가상 지갑 시작 자금 {formatKRW(START_CASH)}</span>
+          </div>
+
+          {toast && (
+            <div className="bg-emerald-50 text-emerald-600 text-sm rounded-lg px-4 py-2">{toast}</div>
+          )}
+
+          <Watchlist prices={watchlistPrices} market={market} setMarket={setMarket} />
+          <PriceCard market={market} setMarket={setMarket} price={price} loading={priceLoading} />
+          <CandleChart candles={candles} loading={candlesLoading} />
+          <WalletCard wallet={wallet} />
+          <OrderForm market={market} price={price} onSubmit={handleOrder} />
+          <OrderHistory orders={orders} />
+
+          <p className="text-xs text-slate-400 text-center pt-4">
+            모의투자 연습용 앱입니다. 실제 투자 권유가 아닙니다.
+          </p>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
