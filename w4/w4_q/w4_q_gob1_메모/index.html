@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>메모장</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const API_BASE_URL = '/api/memos';
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      });
+    }
+
+    function MemoForm({ initial, onSubmit, onCancel, submitLabel }) {
+      const [title, setTitle] = useState(initial ? initial.title : '');
+      const [content, setContent] = useState(initial ? initial.content : '');
+      const [saving, setSaving] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        setSaving(true);
+        try {
+          await onSubmit({ title: title.trim(), content });
+          if (!initial) {
+            setTitle('');
+            setContent('');
+          }
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      return (
+        <form onSubmit={handleSubmit} className={initial ? 'space-y-3' : 'bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6 space-y-3'}>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="제목"
+            autoFocus={!!initial}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium"
+          />
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="내용을 입력하세요..."
+            rows={4}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          />
+          <div className="flex justify-end gap-2">
+            {onCancel && (
+              <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-medium rounded-lg text-slate-500 hover:bg-slate-100">
+                취소
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={saving || !title.trim()}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? '저장 중...' : submitLabel}
+            </button>
+          </div>
+        </form>
+      );
+    }
+
+    function MemoCard({ memo, onEdit, onDelete }) {
+      const [editing, setEditing] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+
+      if (editing) {
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-indigo-200 p-4">
+            <MemoForm
+              initial={memo}
+              submitLabel="수정 완료"
+              onCancel={() => setEditing(false)}
+              onSubmit={async (data) => {
+                await onEdit(memo.id, data);
+                setEditing(false);
+              }}
+            />
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-slate-800 break-words">{memo.title}</h3>
+            <div className="flex gap-1 shrink-0">
+              <button
+                onClick={() => setEditing(true)}
+                className="text-sm text-slate-500 hover:bg-slate-100 rounded-lg px-3 py-1.5"
+              >
+                수정
+              </button>
+              <button
+                disabled={deleting}
+                onClick={async () => {
+                  if (!confirm('이 메모를 삭제할까요?')) return;
+                  setDeleting(true);
+                  await onDelete(memo.id);
+                }}
+                className="text-sm text-red-500 hover:bg-red-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+          <p className="text-slate-600 whitespace-pre-wrap break-words text-sm">{memo.content}</p>
+          <span className="text-xs text-slate-400 mt-1">{formatDate(memo.created_at)}</span>
+        </div>
+      );
+    }
+
+    function App() {
+      const [memos, setMemos] = useState([]);
+      const [search, setSearch] = useState('');
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+
+      const fetchMemos = async (q) => {
+        setLoading(true);
+        setError('');
+        try {
+          const url = q ? `${API_BASE_URL}?search=${encodeURIComponent(q)}` : API_BASE_URL;
+          const res = await fetch(url);
+          const json = await res.json();
+          if (!json.success) throw new Error(json.message || '조회 실패');
+          setMemos(json.data);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        const timer = setTimeout(() => fetchMemos(search), 300);
+        return () => clearTimeout(timer);
+      }, [search]);
+
+      const handleCreate = async (data) => {
+        const res = await fetch(API_BASE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || '생성 실패');
+        fetchMemos(search);
+      };
+
+      const handleEdit = async (id, data) => {
+        const res = await fetch(`${API_BASE_URL}/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || '수정 실패');
+        fetchMemos(search);
+      };
+
+      const handleDelete = async (id) => {
+        const res = await fetch(`${API_BASE_URL}/${id}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || '삭제 실패');
+        fetchMemos(search);
+      };
+
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-10">
+          <h1 className="text-2xl font-bold text-slate-800 mb-6">📝 메모장</h1>
+
+          <MemoForm submitLabel="메모 추가" onSubmit={handleCreate} />
+
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="제목/내용 검색..."
+            className="w-full px-4 py-2 mb-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-2 mb-4">{error}</div>
+          )}
+
+          {loading ? (
+            <p className="text-slate-400 text-center py-10">불러오는 중...</p>
+          ) : memos.length === 0 ? (
+            <p className="text-slate-400 text-center py-10">
+              {search ? '검색 결과가 없습니다.' : '메모가 없습니다. 첫 메모를 작성해보세요!'}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {memos.map((memo) => (
+                <MemoCard key={memo.id} memo={memo} onEdit={handleEdit} onDelete={handleDelete} />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
