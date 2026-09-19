@@ -1,0 +1,7 @@
+node_modules/
+.env
+server.log
+server.pid
+
+.vercel
+.env.local
