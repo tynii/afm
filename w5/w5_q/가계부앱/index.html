@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>가계부</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks
+    // ========================================
+    const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+    const API_BASE_URL = '/api';
+    const won = (n) => Number(n).toLocaleString('ko-KR') + '원';
+    const today = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', className = '', children, ...props }) {
+      const variants = {
+        primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
+        secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100',
+        danger: 'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50',
+        ghost: 'text-slate-500 hover:bg-slate-100',
+      };
+      const sizes = { sm: 'px-2.5 py-1 text-xs', md: 'px-4 py-2 text-sm', lg: 'px-5 py-3 text-base' };
+      return (
+        <button
+          className={`rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400 ${variants[variant]} ${sizes[size]} ${className}`}
+          {...props}
+        >{children}</button>
+      );
+    }
+
+    function Field({ label, error, className = '', children }) {
+      return (
+        <label className={`block ${className}`}>
+          <span className="block text-xs font-medium text-slate-500 mb-1">{label}</span>
+          {children}
+          {error && <span className="block text-xs text-rose-600 mt-1">{error}</span>}
+        </label>
+      );
+    }
+
+    const inputCls = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400';
+
+    function Card({ className = '', children }) {
+      return <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-5 ${className}`}>{children}</div>;
+    }
+
+    // ========================================
+    // 🧩 Feature Components
+    // ========================================
+    function SummaryCards({ income, expense }) {
+      const items = [
+        { label: '총 수입', value: income, color: 'text-emerald-600' },
+        { label: '총 지출', value: expense, color: 'text-rose-600' },
+        { label: '잔액', value: income - expense, color: income - expense < 0 ? 'text-rose-600' : 'text-indigo-600' },
+      ];
+      return (
+        <div className="grid grid-cols-3 gap-3">
+          {items.map((i) => (
+            <Card key={i.label} className="!p-4">
+              <p className="text-xs text-slate-500">{i.label}</p>
+              <p className={`mt-1 text-base sm:text-xl font-bold ${i.color}`}>{won(i.value)}</p>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    function EntryForm({ categories, editing, onAdded, onCancel }) {
+      const [type, setType] = useState(editing ? editing.type : 'expense');
+      const [date, setDate] = useState(editing ? editing.entry_date : today());
+      const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+      const [category, setCategory] = useState(editing ? editing.category : '');
+      const [memo, setMemo] = useState(editing ? editing.memo : '');
+      const [error, setError] = useState('');
+      const [saving, setSaving] = useState(false);
+
+      const options = categories.filter((c) => c.type === type).map((c) => c.name);
+      const selected = options.includes(category) ? category : (options[0] || '');
+      const changeType = (t) => { setType(t); setCategory(''); };
+
+      const submit = async (e) => {
+        e.preventDefault();
+        const amt = Number(amount);
+        if (!selected) return setError('카테고리를 먼저 추가해 주세요');
+        if (!Number.isInteger(amt) || amt <= 0) return setError('금액은 1 이상의 정수로 입력해 주세요');
+        setError('');
+        setSaving(true);
+        try {
+          const res = await fetch(`${API_BASE_URL}/entries${editing ? `/${editing.id}` : ''}`, {
+            method: editing ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, entry_date: date, amount: amt, category: selected, memo }),
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.message);
+          setAmount(''); setMemo('');
+          onAdded();
+        } catch (err) {
+          setError(err.message || '저장에 실패했어요');
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      return (
+        <Card>
+          <h2 className="font-bold mb-3">{editing ? '내역 수정' : '내역 등록'}</h2>
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="수입/지출 구분">
+              {[['expense', '지출'], ['income', '수입']].map(([v, l]) => (
+                <button type="button" key={v} onClick={() => changeType(v)} aria-pressed={type === v}
+                  className={`rounded-lg py-2 text-sm font-medium border transition ${type === v
+                    ? (v === 'expense' ? 'bg-rose-500 border-rose-500 text-white' : 'bg-emerald-500 border-emerald-500 text-white')
+                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'}`}>{l}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="날짜">
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
+              </Field>
+              <Field label="카테고리">
+                <select value={selected} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+                  {options.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="금액 (원)" error={error}>
+              <input type="number" min="1" step="1" inputMode="numeric" value={amount}
+                onChange={(e) => setAmount(e.target.value)} placeholder="예: 12000" required className={inputCls} />
+            </Field>
+            <Field label="메모">
+              <input type="text" maxLength={200} value={memo} onChange={(e) => setMemo(e.target.value)}
+                placeholder="예: 점심 김치찌개" className={inputCls} />
+            </Field>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={saving} className="flex-1">{saving ? '저장 중…' : (editing ? '수정 저장' : '등록')}</Button>
+              {editing && <Button type="button" variant="secondary" onClick={onCancel}>취소</Button>}
+            </div>
+          </form>
+        </Card>
+      );
+    }
+
+    function CategoryManager({ categories, onChanged }) {
+      const [type, setType] = useState('expense');
+      const [name, setName] = useState('');
+      const [error, setError] = useState('');
+
+      const call = async (url, method, body) => {
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message);
+      };
+      const add = async (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        try { await call(`${API_BASE_URL}/categories`, 'POST', { type, name }); setName(''); setError(''); onChanged(); }
+        catch (err) { setError(err.message); }
+      };
+      const remove = async (c) => {
+        try { await call(`${API_BASE_URL}/categories/${c.type}/${encodeURIComponent(c.name)}`, 'DELETE'); setError(''); onChanged(); }
+        catch (err) { setError(err.message); }
+      };
+
+      return (
+        <Card>
+          <h2 className="font-bold mb-3">카테고리 관리</h2>
+          <form onSubmit={add} className="flex gap-2">
+            <select value={type} onChange={(e) => setType(e.target.value)} aria-label="구분" className={`${inputCls} !w-24`}>
+              <option value="expense">지출</option>
+              <option value="income">수입</option>
+            </select>
+            <input type="text" maxLength={20} value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="새 카테고리" aria-label="새 카테고리 이름" className={inputCls} />
+            <Button type="submit" className="shrink-0">추가</Button>
+          </form>
+          {error && <p role="alert" className="text-xs text-rose-600 mt-2">{error}</p>}
+          {[['expense', '지출'], ['income', '수입']].map(([t, label]) => (
+            <div key={t} className="mt-3">
+              <p className="text-xs text-slate-500 mb-1">{label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {categories.filter((c) => c.type === t).map((c) => (
+                  <span key={c.name} className="inline-flex items-center gap-1 rounded-full bg-slate-100 pl-2.5 pr-1 py-0.5 text-xs">
+                    {c.name}
+                    <button type="button" onClick={() => remove(c)} aria-label={`${c.name} 카테고리 삭제`}
+                      className="w-4 h-4 rounded-full text-slate-400 hover:bg-slate-300 hover:text-white leading-none">×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Card>
+      );
+    }
+
+    function ChartCanvas({ config }) {
+      const ref = useRef(null);
+      useEffect(() => {
+        const chart = new Chart(ref.current, config);
+        return () => chart.destroy();
+      }, [config]);
+      return <canvas ref={ref} />;
+    }
+
+    const PALETTE = ['#6366f1', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#a855f7', '#84cc16', '#ec4899', '#64748b', '#f97316'];
+
+    function EntryCharts({ entries, summary }) {
+      const donut = useMemo(() => {
+        const rows = summary.filter((r) => r.type === 'expense');
+        return {
+          type: 'doughnut',
+          data: { labels: rows.map((r) => r.category), datasets: [{ data: rows.map((r) => r.total), backgroundColor: PALETTE, borderWidth: 0 }] },
+          options: { plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${won(c.parsed)}` } } } },
+        };
+      }, [summary]);
+
+      const bar = useMemo(() => {
+        const byDate = {};
+        entries.forEach((e) => {
+          byDate[e.entry_date] = byDate[e.entry_date] || { income: 0, expense: 0 };
+          byDate[e.entry_date][e.type] += e.amount;
+        });
+        const dates = Object.keys(byDate).sort().slice(-14);
+        return {
+          type: 'bar',
+          data: {
+            labels: dates.map((d) => d.slice(5)),
+            datasets: [
+              { label: '수입', data: dates.map((d) => byDate[d].income), backgroundColor: '#34d399' },
+              { label: '지출', data: dates.map((d) => byDate[d].expense), backgroundColor: '#fb7185' },
+            ],
+          },
+          options: {
+            scales: { y: { ticks: { callback: (v) => v.toLocaleString('ko-KR') } } },
+            plugins: { tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${won(c.parsed.y)}` } } },
+          },
+        };
+      }, [entries]);
+
+      if (entries.length === 0) return null;
+      return (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Card>
+            <h2 className="font-bold mb-3">지출 카테고리 비중</h2>
+            {donut.data.labels.length ? <ChartCanvas config={donut} /> : <p className="text-xs text-slate-400">지출 내역이 없어요</p>}
+          </Card>
+          <Card>
+            <h2 className="font-bold mb-3">일별 수입/지출 <span className="text-xs font-normal text-slate-400">최근 14일</span></h2>
+            <ChartCanvas config={bar} />
+          </Card>
+        </div>
+      );
+    }
+
+    function CategoryTotals({ rows }) {
+      const render = (type, title, bar) => {
+        const list = rows.filter((r) => r.type === type);
+        const sum = list.reduce((s, r) => s + r.total, 0);
+        return (
+          <div>
+            <h3 className="text-sm font-semibold text-slate-600 mb-2">{title} <span className="text-slate-400 font-normal">{won(sum)}</span></h3>
+            {list.length === 0 ? <p className="text-xs text-slate-400">내역이 없어요</p> : (
+              <ul className="space-y-2">
+                {list.map((r) => (
+                  <li key={r.category}>
+                    <div className="flex justify-between text-sm">
+                      <span>{r.category} <span className="text-xs text-slate-400">{r.count}건</span></span>
+                      <span className="font-medium">{won(r.total)}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                      <div className={`h-full ${bar}`} style={{ width: `${(r.total / sum) * 100}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      };
+      return (
+        <Card>
+          <h2 className="font-bold mb-3">카테고리별 합계</h2>
+          <div className="space-y-5">
+            {render('expense', '지출', 'bg-rose-400')}
+            {render('income', '수입', 'bg-emerald-400')}
+          </div>
+        </Card>
+      );
+    }
+
+    function EntryList({ entries, editingId, onEdit, onDelete }) {
+      return (
+        <Card>
+          <h2 className="font-bold mb-3">내역 목록 <span className="text-sm font-normal text-slate-400">{entries.length}건</span></h2>
+          {entries.length === 0 ? (
+            <p className="text-center text-sm text-slate-400 py-10">아직 등록된 내역이 없어요. 왼쪽 폼에서 첫 내역을 등록해 보세요.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {entries.map((e) => (
+                <li key={e.id} className={`flex items-center gap-3 py-3 ${e.id === editingId ? 'bg-indigo-50 -mx-2 px-2 rounded-lg' : ''}`}>
+                  <div className="w-20 shrink-0 text-xs text-slate-400">{e.entry_date}</div>
+                  <div className="min-w-0 flex-1">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${e.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{e.category}</span>
+                    {e.memo && <p className="text-sm text-slate-600 truncate mt-0.5">{e.memo}</p>}
+                  </div>
+                  <div className={`text-sm font-semibold whitespace-nowrap ${e.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {e.type === 'income' ? '+' : '-'}{won(e.amount)}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => onEdit(e)} aria-label={`${e.category} ${won(e.amount)} 수정`}>수정</Button>
+                  <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)} aria-label={`${e.category} ${won(e.amount)} 삭제`}>삭제</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+    function App() {
+      const [entries, setEntries] = useState([]);
+      const [summary, setSummary] = useState([]);
+      const [categories, setCategories] = useState([]);
+      const [editing, setEditing] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+
+      const load = useCallback(async () => {
+        try {
+          const [a, b, c] = await Promise.all([
+            fetch(`${API_BASE_URL}/entries`).then((r) => r.json()),
+            fetch(`${API_BASE_URL}/summary`).then((r) => r.json()),
+            fetch(`${API_BASE_URL}/categories`).then((r) => r.json()),
+          ]);
+          if (!a.success || !b.success || !c.success) throw new Error();
+          setEntries(a.data); setSummary(b.data); setCategories(c.data); setError('');
+        } catch {
+          setError('데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const remove = async (id) => {
+        if (!confirm('이 내역을 삭제할까요?')) return;
+        await fetch(`${API_BASE_URL}/entries/${id}`, { method: 'DELETE' });
+        if (editing && editing.id === id) setEditing(null);
+        load();
+      };
+
+      const startEdit = (entry) => {
+        setEditing(entry);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      const totals = useMemo(() => {
+        const sum = (t) => summary.filter((r) => r.type === t).reduce((s, r) => s + r.total, 0);
+        return { income: sum('income'), expense: sum('expense') };
+      }, [summary]);
+
+      return (
+        <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+          <h1 className="text-2xl font-bold">💰 가계부</h1>
+          {error && <div role="alert" className="rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3">{error}</div>}
+          {loading ? <p className="text-center text-slate-400 py-20">불러오는 중…</p> : (
+            <>
+              <SummaryCards income={totals.income} expense={totals.expense} />
+              <div className="grid lg:grid-cols-[340px_1fr] gap-4 items-start">
+                <div className="space-y-4">
+                  <EntryForm key={editing ? editing.id : 'new'} categories={categories} editing={editing}
+                    onAdded={() => { setEditing(null); load(); }} onCancel={() => setEditing(null)} />
+                  <CategoryTotals rows={summary} />
+                  <CategoryManager categories={categories} onChanged={load} />
+                </div>
+                <div className="space-y-4">
+                  <EntryCharts entries={entries} summary={summary} />
+                  <EntryList entries={entries} editingId={editing && editing.id} onEdit={startEdit} onDelete={remove} />
+                </div>
+              </div>
+            </>
+          )}
+        </main>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
