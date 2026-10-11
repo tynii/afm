@@ -46,4 +46,4 @@
 
 ## 7. 첫 파일
 
-**`w7~8_졸업작품/server.js`**: 0단계. Express로 `index.html`을 보여주는 것부터 시작한다.
+**`졸업작품/server.js`**: 0단계. Express로 `index.html`을 보여주는 것부터 시작한다.
