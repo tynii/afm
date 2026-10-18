@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>위시 모아보기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"Pretendard Variable"', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
+<style>
+  body { word-break: keep-all; -webkit-tap-highlight-color: transparent; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 6rem); }
+  .bottom-safe { bottom: calc(env(safe-area-inset-bottom) + 1.25rem); }
+</style>
+</head>
+<body class="bg-white font-sans text-neutral-950 antialiased">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// 서버의 CATEGORIES와 같아야 한다
+const CATEGORIES = ['문화', '콘텐츠', '장소', '음식', '상품', '기타'];
+
+// "musinsa.com/..."처럼 http(s)://를 빼고 붙여넣어도 저장되게 앞에 붙여준다
+function withScheme(value) {
+  const text = value.trim();
+  if (!text || /^https?:\/\//i.test(text)) return text;
+  return 'https://' + text;
+}
+
+function hostOf(link) {
+  try {
+    return new URL(link).hostname.replace(/^www\./, '');
+  } catch {
+    return link;
+  }
+}
+
+// ── API ──
+async function api(path, options) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) throw new Error(json.message || '요청에 실패했어요.');
+  return json.data;
+}
+
+// 상세·수정 화면에서 위시 1개를 불러온다
+function useWish(id) {
+  const [wish, setWish] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api('/api/wishes/' + id)
+      .then(setWish)
+      .catch((e) => setError(e.message));
+  }, [id]);
+  return { wish, error };
+}
+
+// ── 해시 라우팅 ──
+// #/ 목록 · #/add 담기 · #/wish/3 상세 · #/wish/3/edit 수정
+const isList = (hash) => !hash || hash === '#/';
+
+// 목록에서 다른 화면에 다녀와도 필터·스크롤 위치를 그대로 두려고 기억해 둔다
+const listMemory = { filter: '전체', scrollY: 0 };
+
+// 앱 안에서 몇 번째 화면인지 history.state에 적어 둔다.
+// 0보다 크면 [뒤로]를 브라우저 뒤로가기로 처리해서 폰의 뒤로가기 제스처와 똑같이 움직인다
+if (!window.history.state) window.history.replaceState({ depth: 0 }, '');
+let depth = window.history.state.depth || 0;
+
+function goBack(fallback) {
+  if (depth > 0) window.history.back();
+  else window.location.hash = fallback;
+}
+
+function useHashRoute() {
+  const [route, setRoute] = useState(window.location.hash || '#/');
+  useEffect(() => {
+    let current = window.location.hash;
+    const onChange = () => {
+      if (isList(current)) listMemory.scrollY = window.scrollY;
+      current = window.location.hash;
+      const state = window.history.state;
+      if (state && typeof state.depth === 'number') depth = state.depth;
+      else window.history.replaceState({ depth: ++depth }, '');
+      setRoute(current || '#/');
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return route;
+}
+
+// ── 아이콘 (lucide 모양을 그대로 옮긴 SVG) ──
+function Icon({ d, className = 'h-5 w-5' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {d.map((path) => <path key={path} d={path} />)}
+    </svg>
+  );
+}
+const ICON = {
+  back: ['m15 18-6-6 6-6'],
+  plus: ['M5 12h14', 'M12 5v14'],
+  external: ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
+};
+
+// ── 공통 스타일 ──
+const ui = {
+  page: 'mx-auto min-h-screen max-w-md',
+  input:
+    'h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-base placeholder:text-neutral-400 outline-none transition focus:border-neutral-400 focus:ring-[3px] focus:ring-neutral-400/30',
+  label: 'mb-2 block text-sm font-medium',
+  hint: 'font-normal text-neutral-400',
+  primary:
+    'inline-flex h-11 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50',
+  outline:
+    'inline-flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-medium transition hover:bg-neutral-100 disabled:opacity-50',
+  chip: (active) =>
+    `inline-flex h-8 shrink-0 items-center rounded-full border px-3.5 text-[13px] font-medium transition ${
+      active ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100'
+    }`,
+  // 폼 안에서 하나를 고르는 버튼 (shadcn ToggleGroup 모양)
+  option: (active) =>
+    `inline-flex h-10 items-center justify-center rounded-lg border text-sm font-medium transition ${
+      active ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100'
+    }`,
+  muted: 'text-sm text-neutral-500',
+};
+
+// ── 공통 조각 ──
+function WishImage({ src, className, fit = 'cover' }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className={`relative overflow-hidden ${fit === 'contain' ? 'bg-neutral-50' : 'bg-neutral-100'} ${className}`}>
+      {src && !failed && (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className={`h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+        />
+      )}
+      <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-black/5" />
+    </div>
+  );
+}
+
+function TopBar({ back, title }) {
+  return (
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-1 bg-white/90 px-2 backdrop-blur">
+      <button
+        type="button"
+        onClick={() => goBack(back)}
+        aria-label="뒤로"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100"
+      >
+        <Icon d={ICON.back} />
+      </button>
+      {title && <h1 className="text-base font-semibold">{title}</h1>}
+    </header>
+  );
+}
+
+function Message({ children, tone = 'muted' }) {
+  return <p className={`py-16 text-center text-sm ${tone === 'error' ? 'text-red-600' : 'text-neutral-500'}`}>{children}</p>;
+}
+
+// ── 목록 화면 ──
+function ListPage() {
+  const [wishes, setWishes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState(listMemory.filter);
+
+  useEffect(() => {
+    api('/api/wishes')
+      .then(setWishes)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    listMemory.filter = filter;
+  }, [filter]);
+
+  // 카드가 그려진 뒤 이전 스크롤 위치로 돌아간다
+  useEffect(() => {
+    if (!loading) window.scrollTo(0, listMemory.scrollY);
+  }, [loading]);
+
+  const visible = filter === '전체' ? wishes : wishes.filter((w) => w.category === filter);
+
+  return (
+    <main className={`${ui.page} pb-safe`}>
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur">
+        <div className="flex items-baseline gap-2 px-4 pb-3 pt-6">
+          <h1 className="text-2xl font-bold tracking-tight">위시 모아보기</h1>
+          {!loading && !error && <span className="text-sm text-neutral-400">{visible.length}</span>}
+        </div>
+        <div className="relative">
+          <nav className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
+            {['전체', ...CATEGORIES].map((c) => (
+              <button key={c} onClick={() => setFilter(c)} className={ui.chip(filter === c)}>
+                {c}
+              </button>
+            ))}
+          </nav>
+          {/* 오른쪽 끝을 흐리게 해서 옆으로 더 있다는 걸 알려준다 */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white" />
+        </div>
+      </header>
+
+      <div className="px-4 pt-2">
+        {loading && (
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-6">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="animate-pulse">
+                <div className="aspect-square rounded-xl bg-neutral-100" />
+                <div className="mt-2.5 h-4 w-3/4 rounded bg-neutral-100" />
+              </li>
+            ))}
+          </ul>
+        )}
+        {error && <Message tone="error">{error}</Message>}
+        {!loading && !error && visible.length === 0 && (
+          <Message>{filter === '전체' ? '아직 담은 위시가 없어요.' : `${filter} 위시가 없어요.`}</Message>
+        )}
+
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-6">
+          {visible.map((w) => (
+            <li key={w.id}>
+              <a href={`#/wish/${w.id}`} className="group block">
+                <WishImage src={w.image_url} className="aspect-square rounded-xl" />
+                <p className="mt-2.5 line-clamp-2 text-sm font-medium leading-snug group-hover:underline group-hover:underline-offset-4">
+                  {w.title}
+                </p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <a
+        href="#/add"
+        className="bottom-safe fixed left-1/2 inline-flex h-12 -translate-x-1/2 items-center gap-1.5 rounded-full bg-neutral-900 pl-4 pr-5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
+      >
+        <Icon d={ICON.plus} className="h-4 w-4" />
+        위시 담기
+      </a>
+    </main>
+  );
+}
+
+// ── 상세 화면 ──
+function DetailPage({ id }) {
+  const { wish, error } = useWish(id);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  async function handleDelete() {
+    if (!window.confirm('이 위시를 삭제할까요?')) return;
+    setDeleting(true);
+    try {
+      await api('/api/wishes/' + id, { method: 'DELETE' });
+      goBack('#/');
+    } catch (err) {
+      setDeleteError(err.message);
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <main className={ui.page}>
+      <TopBar back="#/" />
+
+      {error && <Message tone="error">{error}</Message>}
+      {!wish && !error && <Message>불러오는 중…</Message>}
+
+      {wish && (
+        <div className="px-4 pb-10">
+          {wish.image_url && <WishImage src={wish.image_url} fit="contain" className="mb-6 aspect-square rounded-xl" />}
+
+          <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 px-2 text-xs font-medium text-neutral-600">
+            {wish.category}
+          </span>
+          <h1 className="mt-3 text-xl font-semibold leading-snug tracking-tight">{wish.title}</h1>
+
+          {wish.url && (
+            <a
+              href={wish.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 flex h-12 items-center justify-between gap-3 rounded-lg border border-neutral-200 px-4 text-sm transition hover:bg-neutral-100"
+            >
+              <span className="truncate text-neutral-600">{hostOf(wish.url)}</span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 font-medium">
+                링크 열기
+                <Icon d={ICON.external} className="h-4 w-4" />
+              </span>
+            </a>
+          )}
+
+          <section className="mt-8 border-t border-neutral-200 pt-6">
+            <h2 className="text-sm font-medium text-neutral-500">메모</h2>
+            <p className={`mt-2 whitespace-pre-wrap text-[15px] leading-relaxed ${wish.memo ? 'text-neutral-800' : 'text-neutral-400'}`}>
+              {wish.memo || '메모가 없어요.'}
+            </p>
+          </section>
+
+          {deleteError && <p className="mt-6 text-sm text-red-600">{deleteError}</p>}
+
+          <div className="mt-10 grid grid-cols-2 gap-2">
+            <a href={`#/wish/${id}/edit`} className={ui.outline}>
+              수정
+            </a>
+            <button onClick={handleDelete} disabled={deleting} className={`${ui.outline} text-red-600`}>
+              {deleting ? '삭제 중…' : '삭제'}
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ── 담기·수정 공통 입력 폼 ──
+function WishForm({ initial, onSave }) {
+  const [title, setTitle] = useState(initial.title || '');
+  const [url, setUrl] = useState(initial.url || '');
+  const [imageUrl, setImageUrl] = useState(initial.image_url || '');
+  const [category, setCategory] = useState(initial.category || '');
+  const [memo, setMemo] = useState(initial.memo || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [preview, setPreview] = useState('idle'); // idle | loading | failed
+  const [showImageInput, setShowImageInput] = useState(false);
+  const [imageBroken, setImageBroken] = useState(false);
+  // 자동으로 채운 값. 사용자가 직접 고친 칸은 덮어쓰지 않으려고 기억해 둔다
+  const autoFilled = useRef({ title: '', image: '' });
+
+  // 링크를 붙여넣거나 입력을 멈추면 0.6초 뒤 제목·이미지를 불러온다
+  // (수정 화면에서 원래 링크 그대로일 때는 불러오지 않는다)
+  useEffect(() => {
+    const link = withScheme(url);
+    if (!link.includes('.') || link === (initial.url || '')) {
+      setPreview('idle');
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setPreview('loading');
+      try {
+        const data = await api('/api/preview?url=' + encodeURIComponent(link));
+        if (cancelled) return;
+        setTitle((prev) => (!prev.trim() || prev === autoFilled.current.title ? data.title || prev : prev));
+        setImageUrl((prev) => (!prev.trim() || prev === autoFilled.current.image ? data.image_url || prev : prev));
+        autoFilled.current = { title: data.title || '', image: data.image_url || '' };
+        setPreview('idle');
+      } catch {
+        if (cancelled) return;
+        // 이전 링크에서 자동으로 채운 값이 남아 있으면 비운다
+        setTitle((prev) => (prev === autoFilled.current.title ? '' : prev));
+        setImageUrl((prev) => (prev === autoFilled.current.image ? '' : prev));
+        autoFilled.current = { title: '', image: '' };
+        setPreview('failed');
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [url]);
+
+  useEffect(() => setImageBroken(false), [imageUrl]);
+  useEffect(() => setError(''), [title, category]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError('제목을 입력해 주세요.');
+      return;
+    }
+    if (!category) {
+      setError('카테고리를 선택해 주세요.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ title, category, memo, url: withScheme(url), image_url: withScheme(imageUrl) });
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6 px-4 pb-10 pt-2">
+      <div>
+        <label htmlFor="title" className={ui.label}>제목</label>
+        <input
+          id="title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={200}
+          placeholder="예: 성수 카페 어니언"
+          className={ui.input}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="url" className={ui.label}>
+          링크 <span className={ui.hint}>선택</span>
+        </label>
+        <input
+          id="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          placeholder="https://"
+          className={ui.input}
+        />
+        {preview === 'loading' && <p className={`mt-2 ${ui.muted}`}>정보를 불러오는 중…</p>}
+        {preview === 'failed' && <p className={`mt-2 ${ui.muted}`}>이 링크는 정보를 불러올 수 없어요. 직접 입력해 주세요.</p>}
+
+        <div className="mt-3 flex items-end gap-3">
+          {imageUrl.trim() &&
+            (imageBroken ? (
+              <p className={ui.muted}>이미지를 표시할 수 없어요.</p>
+            ) : (
+              <WishImage src={withScheme(imageUrl)} className="h-20 w-20 shrink-0 rounded-lg" />
+            ))}
+          {!showImageInput && (
+            <button
+              type="button"
+              onClick={() => setShowImageInput(true)}
+              className="text-sm text-neutral-500 underline underline-offset-4 hover:text-neutral-900"
+            >
+              {imageUrl.trim() ? '이미지 주소 수정' : '이미지 직접 넣기'}
+            </button>
+          )}
+        </div>
+        {showImageInput && (
+          <input
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="이미지 주소 https://…"
+            aria-label="이미지 주소"
+            className={`mt-3 ${ui.input}`}
+          />
+        )}
+      </div>
+
+      <div>
+        <span className={ui.label}>카테고리</span>
+        <div className="grid grid-cols-3 gap-2">
+          {CATEGORIES.map((c) => (
+            <button key={c} type="button" onClick={() => setCategory(c)} className={ui.option(category === c)}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="memo" className={ui.label}>
+          메모 <span className={ui.hint}>선택</span>
+        </label>
+        <textarea
+          id="memo"
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          maxLength={1000}
+          rows={3}
+          placeholder="예: 사이즈 M, 주말엔 웨이팅 김"
+          className={`${ui.input} h-auto resize-none py-2.5`}
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <button type="submit" disabled={saving} className={ui.primary}>
+        {saving ? '저장 중…' : '저장'}
+      </button>
+    </form>
+  );
+}
+
+// ── 담기 화면 ──
+function AddPage() {
+  async function save(body) {
+    await api('/api/wishes', { method: 'POST', body: JSON.stringify(body) });
+    listMemory.scrollY = 0; // 새로 담은 위시가 보이게 맨 위로
+    goBack('#/');
+  }
+  return (
+    <main className={ui.page}>
+      <TopBar back="#/" title="위시 담기" />
+      <WishForm initial={{}} onSave={save} />
+    </main>
+  );
+}
+
+// ── 수정 화면 ──
+function EditPage({ id }) {
+  const { wish, error } = useWish(id);
+  async function save(body) {
+    await api('/api/wishes/' + id, { method: 'PUT', body: JSON.stringify(body) });
+    goBack(`#/wish/${id}`);
+  }
+  return (
+    <main className={ui.page}>
+      <TopBar back={`#/wish/${id}`} title="위시 수정" />
+      {error && <Message tone="error">{error}</Message>}
+      {!wish && !error && <Message>불러오는 중…</Message>}
+      {wish && <WishForm initial={wish} onSave={save} />}
+    </main>
+  );
+}
+
+function App() {
+  const route = useHashRoute();
+  if (route === '#/add') return <AddPage />;
+  const match = route.match(/^#\/wish\/(\d+)(\/edit)?$/);
+  if (match) {
+    return match[2] ? <EditPage key={route} id={match[1]} /> : <DetailPage key={route} id={match[1]} />;
+  }
+  return <ListPage />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
