@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#F6F3EC">
 <title>위시 모아보기</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap">
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 <script>
   tailwind.config = {
@@ -13,6 +14,13 @@
       extend: {
         fontFamily: {
           sans: ['"Pretendard Variable"', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+          serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+        },
+        colors: {
+          paper: '#F6F3EC',
+          line: '#E6E1D6',
+          ink: '#141414',
+          stone: '#7A756B',
         },
       },
     },
@@ -29,13 +37,25 @@
   .bottom-safe { bottom: calc(env(safe-area-inset-bottom) + 1.25rem); }
 </style>
 </head>
-<body class="bg-white font-sans text-neutral-950 antialiased">
+<body class="bg-paper font-sans text-ink antialiased">
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
 // 서버의 CATEGORIES와 같아야 한다
 const CATEGORIES = ['문화', '콘텐츠', '장소', '음식', '상품', '기타'];
+
+// 카테고리마다 색: mat = 스크랩 카드 대지·선택된 버튼, accent = 점·테두리, en = 영문 라벨
+// (폴더 모양은 다음 버전의 '컬렉션'에 쓰려고 아껴 둔다)
+const CATEGORY_COLOR = {
+  문화: { mat: '#FFD3DD', accent: '#F4A9BB', en: 'Culture' },
+  콘텐츠: { mat: '#ECCBF7', accent: '#D9A3EE', en: 'Content' },
+  장소: { mat: '#C3E4F7', accent: '#91CBEC', en: 'Place' },
+  음식: { mat: '#FBD6AA', accent: '#F2B46C', en: 'Food' },
+  상품: { mat: '#C5DFCF', accent: '#8FBFA4', en: 'Goods' },
+  기타: { mat: '#F6E3A3', accent: '#EAC85C', en: 'Etc.' },
+};
+const colorOf = (category) => CATEGORY_COLOR[category] || CATEGORY_COLOR['기타'];
 
 // "musinsa.com/..."처럼 http(s)://를 빼고 붙여넣어도 저장되게 앞에 붙여준다
 function withScheme(value) {
@@ -129,30 +149,49 @@ const ICON = {
 const ui = {
   page: 'mx-auto min-h-screen max-w-md',
   input:
-    'h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-base placeholder:text-neutral-400 outline-none transition focus:border-neutral-400 focus:ring-[3px] focus:ring-neutral-400/30',
-  label: 'mb-2 block text-sm font-medium',
-  hint: 'font-normal text-neutral-400',
+    'h-12 w-full rounded-xl border border-line bg-white px-3.5 text-base placeholder:text-stone/60 outline-none transition focus:border-ink/40 focus:ring-[3px] focus:ring-ink/10',
+  label: 'mb-2 block text-sm font-semibold',
+  hint: 'font-normal text-stone',
   primary:
-    'inline-flex h-11 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50',
+    'inline-flex h-12 w-full items-center justify-center rounded-xl bg-ink text-[15px] font-semibold text-white transition hover:bg-ink/85 disabled:opacity-50',
   outline:
-    'inline-flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-medium transition hover:bg-neutral-100 disabled:opacity-50',
-  chip: (active) =>
-    `inline-flex h-8 shrink-0 items-center rounded-full border px-3.5 text-[13px] font-medium transition ${
-      active ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100'
-    }`,
-  // 폼 안에서 하나를 고르는 버튼 (shadcn ToggleGroup 모양)
-  option: (active) =>
-    `inline-flex h-10 items-center justify-center rounded-lg border text-sm font-medium transition ${
-      active ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100'
-    }`,
-  muted: 'text-sm text-neutral-500',
+    'inline-flex h-12 items-center justify-center rounded-xl border border-line bg-white text-sm font-semibold transition hover:bg-white/60 disabled:opacity-50',
+  muted: 'text-sm text-stone',
 };
 
+// 카테고리 버튼: 고르면 그 카테고리의 폴더 색으로 채워진다. '전체'는 잉크색
+function categoryStyle(category, active) {
+  if (!active) return undefined;
+  if (category === '전체') return { background: '#141414', borderColor: '#141414', color: '#fff' };
+  const c = colorOf(category);
+  return { background: c.mat, borderColor: c.accent };
+}
+
+function CategoryButton({ category, active, onClick, shape = 'chip' }) {
+  const base = shape === 'chip' ? 'h-9 shrink-0 rounded-full px-3.5 text-[13px]' : 'h-11 justify-center rounded-xl text-sm';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={categoryStyle(category, active)}
+      className={`inline-flex items-center gap-1.5 border font-semibold transition ${base} ${
+        active ? 'text-ink' : 'border-line bg-white/70 text-stone hover:bg-white'
+      }`}
+    >
+      {category !== '전체' && !active && (
+        <span className="h-2 w-2 rounded-full" style={{ background: colorOf(category).accent }} />
+      )}
+      {category}
+    </button>
+  );
+}
+
 // ── 공통 조각 ──
-function WishImage({ src, className, fit = 'cover' }) {
+// 이미지가 없거나 깨지면 빈 종이 한 장처럼 보인다
+function WishImage({ src, className, fit = 'cover', style }) {
   const [failed, setFailed] = useState(false);
   return (
-    <div className={`relative overflow-hidden ${fit === 'contain' ? 'bg-neutral-50' : 'bg-neutral-100'} ${className}`}>
+    <div style={style} className={`relative overflow-hidden bg-white/70 ${className}`}>
       {src && !failed && (
         <img
           src={src}
@@ -168,14 +207,52 @@ function WishImage({ src, className, fit = 'cover' }) {
   );
 }
 
+// 반투명 테이프 한 조각
+function Tape({ className }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute left-1/2 z-10 -translate-x-1/2 -rotate-[4deg] border border-black/5 bg-white/60 shadow-[0_1px_2px_rgba(0,0,0,0.06)] backdrop-blur-[2px] ${className}`}
+    />
+  );
+}
+
+// 위시 한 장 = 카테고리 색 대지 위에 사진을 테이프로 붙인 스크랩 카드
+// 사진은 흰 인화지에 뽑은 것처럼 테두리를 두고, 짝수/홀수에 따라 살짝 기울인다
+function ScrapCard({ wish, size = 'sm' }) {
+  const c = colorOf(wish.category);
+  const big = size === 'lg';
+  const tilt = wish.id % 2 ? -1.5 : 1.2;
+  return (
+    <div className={big ? 'rounded-[26px] px-5 pb-6 pt-7' : 'rounded-[16px] px-2.5 pb-3 pt-4'} style={{ background: c.mat }}>
+      <div className="relative" style={{ transform: `rotate(${tilt}deg)` }}>
+        <Tape className={big ? '-top-3.5 h-7 w-24' : '-top-2.5 h-5 w-14'} />
+        <div className={`bg-white shadow-[0_2px_8px_rgba(0,0,0,0.10)] ${big ? 'rounded-[8px] p-2.5' : 'rounded-[5px] p-1.5'}`}>
+          <WishImage
+            src={wish.image_url}
+            fit={big ? 'contain' : 'cover'}
+            className={big ? 'aspect-square rounded-[4px]' : 'aspect-square rounded-[3px]'}
+          />
+        </div>
+      </div>
+      <p className={`font-serif italic leading-none text-ink/50 ${big ? 'mt-6 text-xl' : 'mt-3 px-0.5 text-[15px]'}`}>{c.en}</p>
+      {big ? (
+        <h1 className="mt-2 text-[22px] font-bold leading-snug tracking-tight">{wish.title}</h1>
+      ) : (
+        <p className="mt-1 line-clamp-2 min-h-[2.6em] px-0.5 text-[13.5px] font-semibold leading-snug">{wish.title}</p>
+      )}
+    </div>
+  );
+}
+
 function TopBar({ back, title }) {
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-1 bg-white/90 px-2 backdrop-blur">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-1 bg-paper/90 px-2 backdrop-blur">
       <button
         type="button"
         onClick={() => goBack(back)}
         aria-label="뒤로"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-700 hover:bg-neutral-100"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-black/5"
       >
         <Icon d={ICON.back} />
       </button>
@@ -185,7 +262,7 @@ function TopBar({ back, title }) {
 }
 
 function Message({ children, tone = 'muted' }) {
-  return <p className={`py-16 text-center text-sm ${tone === 'error' ? 'text-red-600' : 'text-neutral-500'}`}>{children}</p>;
+  return <p className={`py-16 text-center text-sm ${tone === 'error' ? 'text-red-600' : 'text-stone'}`}>{children}</p>;
 }
 
 // ── 목록 화면 ──
@@ -215,31 +292,31 @@ function ListPage() {
 
   return (
     <main className={`${ui.page} pb-safe`}>
-      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur">
-        <div className="flex items-baseline gap-2 px-4 pb-3 pt-6">
-          <h1 className="text-2xl font-bold tracking-tight">위시 모아보기</h1>
-          {!loading && !error && <span className="text-sm text-neutral-400">{visible.length}</span>}
+      <header className="sticky top-0 z-10 bg-paper/90 backdrop-blur">
+        <div className="px-4 pb-3 pt-7">
+          <p className="font-serif text-[22px] italic leading-none text-stone">My wish scrapbook</p>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <h1 className="text-[28px] font-bold tracking-tight">위시 모아보기</h1>
+            {!loading && !error && <span className="font-serif text-xl italic text-stone">{visible.length}</span>}
+          </div>
         </div>
         <div className="relative">
           <nav className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
             {['전체', ...CATEGORIES].map((c) => (
-              <button key={c} onClick={() => setFilter(c)} className={ui.chip(filter === c)}>
-                {c}
-              </button>
+              <CategoryButton key={c} category={c} active={filter === c} onClick={() => setFilter(c)} />
             ))}
           </nav>
           {/* 오른쪽 끝을 흐리게 해서 옆으로 더 있다는 걸 알려준다 */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-paper" />
         </div>
       </header>
 
       <div className="px-4 pt-2">
         {loading && (
-          <ul className="grid grid-cols-2 gap-x-3 gap-y-6">
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-4">
             {[0, 1, 2, 3].map((i) => (
               <li key={i} className="animate-pulse">
-                <div className="aspect-square rounded-xl bg-neutral-100" />
-                <div className="mt-2.5 h-4 w-3/4 rounded bg-neutral-100" />
+                <div className="aspect-[4/5] rounded-[16px] bg-line/70" />
               </li>
             ))}
           </ul>
@@ -249,14 +326,11 @@ function ListPage() {
           <Message>{filter === '전체' ? '아직 담은 위시가 없어요.' : `${filter} 위시가 없어요.`}</Message>
         )}
 
-        <ul className="grid grid-cols-2 gap-x-3 gap-y-6">
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-4">
           {visible.map((w) => (
             <li key={w.id}>
-              <a href={`#/wish/${w.id}`} className="group block">
-                <WishImage src={w.image_url} className="aspect-square rounded-xl" />
-                <p className="mt-2.5 line-clamp-2 text-sm font-medium leading-snug group-hover:underline group-hover:underline-offset-4">
-                  {w.title}
-                </p>
+              <a href={`#/wish/${w.id}`} className="block transition active:scale-[0.98]">
+                <ScrapCard wish={w} />
               </a>
             </li>
           ))}
@@ -265,7 +339,7 @@ function ListPage() {
 
       <a
         href="#/add"
-        className="bottom-safe fixed left-1/2 inline-flex h-12 -translate-x-1/2 items-center gap-1.5 rounded-full bg-neutral-900 pl-4 pr-5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
+        className="bottom-safe fixed left-1/2 inline-flex h-12 -translate-x-1/2 items-center gap-1.5 rounded-full bg-ink pl-4 pr-5 text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgba(0,0,0,0.35)] transition hover:bg-ink/85"
       >
         <Icon d={ICON.plus} className="h-4 w-4" />
         위시 담기
@@ -301,38 +375,35 @@ function DetailPage({ id }) {
 
       {wish && (
         <div className="px-4 pb-10">
-          {wish.image_url && <WishImage src={wish.image_url} fit="contain" className="mb-6 aspect-square rounded-xl" />}
-
-          <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 px-2 text-xs font-medium text-neutral-600">
-            {wish.category}
-          </span>
-          <h1 className="mt-3 text-xl font-semibold leading-snug tracking-tight">{wish.title}</h1>
+          <ScrapCard wish={wish} size="lg" />
 
           {wish.url && (
             <a
               href={wish.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-5 flex h-12 items-center justify-between gap-3 rounded-lg border border-neutral-200 px-4 text-sm transition hover:bg-neutral-100"
+              className="mt-4 flex h-14 items-center justify-between gap-3 rounded-2xl border border-line bg-white px-5 text-sm transition hover:bg-white/60"
             >
-              <span className="truncate text-neutral-600">{hostOf(wish.url)}</span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 font-medium">
+              <span className="truncate text-stone">{hostOf(wish.url)}</span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold">
                 링크 열기
                 <Icon d={ICON.external} className="h-4 w-4" />
               </span>
             </a>
           )}
 
-          <section className="mt-8 border-t border-neutral-200 pt-6">
-            <h2 className="text-sm font-medium text-neutral-500">메모</h2>
-            <p className={`mt-2 whitespace-pre-wrap text-[15px] leading-relaxed ${wish.memo ? 'text-neutral-800' : 'text-neutral-400'}`}>
+          {/* 메모: 테이프로 붙인 종이 쪽지 */}
+          <section className="relative mt-8 rounded-2xl border border-line bg-white px-5 pb-5 pt-6">
+            <span className="absolute -top-3 left-1/2 h-6 w-20 -translate-x-1/2 -rotate-3 border border-black/5 bg-white/70 shadow-sm backdrop-blur-sm" />
+            <h2 className="font-serif text-lg italic leading-none text-stone">Note</h2>
+            <p className={`mt-2 whitespace-pre-wrap text-[15px] leading-relaxed ${wish.memo ? 'text-ink' : 'text-stone/70'}`}>
               {wish.memo || '메모가 없어요.'}
             </p>
           </section>
 
           {deleteError && <p className="mt-6 text-sm text-red-600">{deleteError}</p>}
 
-          <div className="mt-10 grid grid-cols-2 gap-2">
+          <div className="mt-8 grid grid-cols-2 gap-2">
             <a href={`#/wish/${id}/edit`} className={ui.outline}>
               수정
             </a>
@@ -453,13 +524,13 @@ function WishForm({ initial, onSave }) {
             (imageBroken ? (
               <p className={ui.muted}>이미지를 표시할 수 없어요.</p>
             ) : (
-              <WishImage src={withScheme(imageUrl)} className="h-20 w-20 shrink-0 rounded-lg" />
+              <WishImage src={withScheme(imageUrl)} className="h-20 w-20 shrink-0 rounded-xl border border-line" />
             ))}
           {!showImageInput && (
             <button
               type="button"
               onClick={() => setShowImageInput(true)}
-              className="text-sm text-neutral-500 underline underline-offset-4 hover:text-neutral-900"
+              className="text-sm text-stone underline underline-offset-4 hover:text-ink"
             >
               {imageUrl.trim() ? '이미지 주소 수정' : '이미지 직접 넣기'}
             </button>
@@ -483,9 +554,7 @@ function WishForm({ initial, onSave }) {
         <span className={ui.label}>카테고리</span>
         <div className="grid grid-cols-3 gap-2">
           {CATEGORIES.map((c) => (
-            <button key={c} type="button" onClick={() => setCategory(c)} className={ui.option(category === c)}>
-              {c}
-            </button>
+            <CategoryButton key={c} category={c} shape="option" active={category === c} onClick={() => setCategory(c)} />
           ))}
         </div>
       </div>
